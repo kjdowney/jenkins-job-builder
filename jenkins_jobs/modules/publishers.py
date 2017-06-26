@@ -5304,6 +5304,11 @@ def create_publishers(registry, action):
     registry.dispatch('publisher', dummy_parent, action)
     return list(dummy_parent)
 
+# Used for getting list for Any Build Step plugin
+def create_builders(registry, step):
+    dummy_parent = XML.Element("dummy")
+    registry.dispatch('builder', dummy_parent, step)
+    return list(dummy_parent)
 
 def conditional_publisher(registry, xml_parent, data):
     """yaml: conditional-publisher
@@ -5460,11 +5465,20 @@ def conditional_publisher(registry, xml_parent, data):
                                        'value.' % kind)
 
     def publish_action(parent, action):
-        for edited_node in create_publishers(registry, action):
-            if not use_publisher_list:
-                edited_node.set('class', edited_node.tag)
-                edited_node.tag = 'publisher'
-            parent.append(edited_node)
+        try:
+            for edited_node in create_publishers(registry, action):
+                if not use_publisher_list:
+                    edited_node.set('class', edited_node.tag)
+                    edited_node.tag = 'publisher'
+                parent.append(edited_node)
+        except JenkinsJobsException:
+            # If Any Build Step plugin is installed, search for action in Builders list, too.
+            any_step_info = registry.get_plugin_info("Any Build Step Plugin")
+            if not any_step_info.get('shortName'):
+                raise
+            else:
+                for edited_node in create_builders(registry, action):
+                    parent.append(edited_node)
 
     flex_publisher_tag = 'org.jenkins__ci.plugins.flexible__publish.'    \
         'FlexiblePublisher'
