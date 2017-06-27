@@ -4255,9 +4255,14 @@ def git(registry, xml_parent, data):
                  (default false)
 
 
-    Example:
+    Minimal Example:
 
-    .. literalinclude:: /../../tests/publishers/fixtures/git001.yaml
+    .. literalinclude:: /../../tests/publishers/fixtures/git-minimal.yaml
+       :language: yaml
+
+    Full Example:
+
+    .. literalinclude:: /../../tests/publishers/fixtures/git-full.yaml
        :language: yaml
     """
     mappings = [('push-merge', 'pushMerge', False),
@@ -4372,10 +4377,16 @@ def build_publisher(registry, xml_parent, data):
     :arg int num-to-keep: number of jobs to keep in the published results
       (optional)
 
-    Example:
+    Minimal Example:
 
     .. literalinclude::
-        /../../tests/publishers/fixtures/build-publisher002.yaml
+        /../../tests/publishers/fixtures/build-publisher-minimal.yaml
+       :language: yaml
+
+    Full Example:
+
+    .. literalinclude::
+        /../../tests/publishers/fixtures/build-publisher-full.yaml
        :language: yaml
     """
 
@@ -4383,21 +4394,24 @@ def build_publisher(registry, xml_parent, data):
         xml_parent,
         'hudson.plugins.build__publisher.BuildPublisher')
 
-    XML.SubElement(reporter, 'publishUnstableBuilds').text = \
-        str(data.get('publish-unstable-builds', True)).lower()
-    XML.SubElement(reporter, 'publishFailedBuilds').text = \
-        str(data.get('publish-failed-builds', True)).lower()
-
+    mappings = [
+        ('publish-unstable-builds', 'publishUnstableBuilds', True),
+        ('publish-failed-builds', 'publishFailedBuilds', True)
+    ]
+    helpers.convert_mapping_to_xml(
+        reporter, data, mappings, fail_required=True)
     if 'days-to-keep' in data or 'num-to-keep' in data:
         logrotator = XML.SubElement(reporter, 'logRotator')
-        XML.SubElement(logrotator, 'daysToKeep').text = \
-            str(data.get('days-to-keep', -1))
-        XML.SubElement(logrotator, 'numToKeep').text = \
-            str(data.get('num-to-keep', -1))
-        # hardcoded to -1 to emulate what the build publisher
-        # plugin seem to do.
-        XML.SubElement(logrotator, 'artifactDaysToKeep').text = "-1"
-        XML.SubElement(logrotator, 'artifactNumToKeep').text = "-1"
+        mappings = [
+            ('days-to-keep', 'daysToKeep', -1),
+            ('num-to-keep', 'numToKeep', -1),
+            # hardcoded to -1 to emulate what the build publisher
+            # plugin seem to do.
+            ('', 'artifactDaysToKeep', -1),
+            ('', 'artifactNumToKeep', -1)
+        ]
+        helpers.convert_mapping_to_xml(
+            logrotator, data, mappings, fail_required=True)
 
 
 def stash(registry, xml_parent, data):
@@ -4417,9 +4431,14 @@ def stash(registry, xml_parent, data):
     :arg bool   include-build-number: Include build number in key
                 (default false)
 
-    Example:
+    Minimal Example:
 
-    .. literalinclude:: /../../tests/publishers/fixtures/stash001.yaml
+    .. literalinclude:: /../../tests/publishers/fixtures/stash-minimal.yaml
+       :language: yaml
+
+    Full Example:
+
+    .. literalinclude:: /../../tests/publishers/fixtures/stash-full.yaml
        :language: yaml
     """
     top = XML.SubElement(xml_parent,
@@ -4436,12 +4455,13 @@ def stash(registry, xml_parent, data):
         XML.SubElement(top, 'stashUserPassword'
                        ).text = helpers.get_value_from_yaml_or_config_file(
                            'password', 'stash', data, registry.jjb_config)
-
-    XML.SubElement(top, 'ignoreUnverifiedSSLPeer').text = str(
-        data.get('ignore-ssl', False)).lower()
-    XML.SubElement(top, 'commitSha1').text = data.get('commit-sha1', '')
-    XML.SubElement(top, 'includeBuildNumberInKey').text = str(
-        data.get('include-build-number', False)).lower()
+    mappings = [
+        ('ignore-ssl', 'ignoreUnverifiedSSLPeer', False),
+        ('commit-sha1', 'commitSha1', ''),
+        ('include-build-number', 'includeBuildNumberInKey', False)
+    ]
+    helpers.convert_mapping_to_xml(
+        top, data, mappings, fail_required=True)
 
 
 def dependency_check(registry, xml_parent, data):
@@ -4455,15 +4475,15 @@ def dependency_check(registry, xml_parent, data):
 
     :arg str pattern: Report filename pattern (optional)
     :arg bool can-run-on-failed: Also runs for failed builds, instead of just
-      stable or unstable builds (default false)
+        stable or unstable builds (default false)
     :arg bool should-detect-modules: Determines if Ant or Maven modules should
-      be detected for all files that contain warnings (default false)
+        be detected for all files that contain warnings (default false)
     :arg int healthy: Sunny threshold (optional)
     :arg int unhealthy: Stormy threshold (optional)
     :arg str health-threshold: Threshold priority for health status
-      ('low', 'normal' or 'high', defaulted to 'low')
+        ('low', 'normal' or 'high', defaulted to 'low')
     :arg dict thresholds: Mark build as failed or unstable if the number of
-      errors exceeds a threshold. (optional)
+        errors exceeds a threshold. (optional)
 
         :thresholds:
             * **unstable** (`dict`)
@@ -4488,21 +4508,27 @@ def dependency_check(registry, xml_parent, data):
     :arg str default-encoding: Encoding for parsing or showing files (optional)
     :arg bool do-not-resolve-relative-paths: (default false)
     :arg bool dont-compute-new: If set to false, computes new warnings based on
-      the reference build (default true)
+        the reference build (default true)
     :arg bool use-previous-build-as-reference: determines whether to always
         use the previous build as the reference build (default false)
     :arg bool use-stable-build-as-reference: The number of new warnings will be
-      calculated based on the last stable build, allowing reverts of unstable
-      builds where the number of warnings was decreased. (default false)
+        calculated based on the last stable build, allowing reverts of unstable
+        builds where the number of warnings was decreased. (default false)
     :arg bool use-delta-values: If set then the number of new warnings is
-      calculated by subtracting the total number of warnings of the current
-      build from the reference build.
-      (default false)
+        calculated by subtracting the total number of warnings of the current
+        build from the reference build.
+        (default false)
 
-    Example:
+    Minimal Example:
 
     .. literalinclude::
-        /../../tests/publishers/fixtures/dependency-check001.yaml
+        /../../tests/publishers/fixtures/dependency-check-minimal.yaml
+       :language: yaml
+
+    Full Example:
+
+    .. literalinclude::
+        /../../tests/publishers/fixtures/dependency-check-full.yaml
        :language: yaml
     """
 
