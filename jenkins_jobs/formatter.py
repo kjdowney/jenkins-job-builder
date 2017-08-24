@@ -98,8 +98,8 @@ class NestedExpansionFormatter(Formatter):
                 obj = self.convert_field(obj, conversion)
 
                 # expand the format spec, if needed
-                format_spec = self._vformat(format_spec, args, kwargs,
-                                            used_args, recursion_depth-1)
+                # format_spec = self._vformat(format_spec, args, kwargs,
+                #                            used_args, recursion_depth-1)
 
                 # format the object
                 # obj = self.format_field(obj, format_spec)
