@@ -70,8 +70,46 @@ def deep_format(obj, paramdict, allow_empty=False):
         ret = obj
     return ret
 
+# Custom formatter used to recursively perform nested string substitution.
+class NestedExpansionFormatter(Formatter):
+    # Override of base _vformat to enable nested string substitution.
+    def _vformat(self, format_string, args, kwargs, used_args, recursion_depth):
+        if recursion_depth < 0:
+            raise ValueError('Max string recursion exceeded')
+        result = []
+        for literal_text, field_name, format_spec, conversion in \
+                self.parse(format_string):
 
-class CustomFormatter(Formatter):
+            # output the literal text
+            if literal_text:
+                result.append(literal_text)
+
+            # if there's a field, output it
+            if field_name is not None:
+                # this is some markup, find the object and do
+                #  the formatting
+
+                # given the field_name, find the object it references
+                #  and the argument it came from
+                obj, arg_used = self.get_field(field_name, args, kwargs)
+                used_args.add(arg_used)
+
+                # do any conversion on the resulting object
+                obj = self.convert_field(obj, conversion)
+
+                # expand the format spec, if needed
+                format_spec = self._vformat(format_spec, args, kwargs,
+                                            used_args, recursion_depth-1)
+
+                # format the object
+                obj = self.format_field(obj, format_spec)
+
+                # Attempt nested expansion on field.
+                result.append(self.vformat(obj, args, kwargs))
+
+        return ''.join(result)
+
+class CustomFormatter(NestedExpansionFormatter):
     """
     Custom formatter to allow non-existing key references when formatting a
     string
@@ -111,11 +149,11 @@ class CustomFormatter(Formatter):
 
         format_string = matcher.sub(re_replace, format_string)
 
-        return Formatter.vformat(self, format_string, args, kwargs)
+        return super.vformat(self, format_string, args, kwargs)
 
     def get_value(self, key, args, kwargs):
         try:
-            return Formatter.get_value(self, key, args, kwargs)
+            return super.get_value(self, key, args, kwargs)
         except KeyError:
             if self.allow_empty:
                 logger.debug(
