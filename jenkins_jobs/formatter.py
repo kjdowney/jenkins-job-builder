@@ -149,11 +149,11 @@ class CustomFormatter(NestedExpansionFormatter):
 
         format_string = matcher.sub(re_replace, format_string)
 
-        return super(CustomFormatter, self).vformat(self, format_string, args, kwargs)
+        return super(CustomFormatter, self).vformat(format_string, args, kwargs)
 
     def get_value(self, key, args, kwargs):
         try:
-            return super(CustomFormatter, self).get_value(self, key, args, kwargs)
+            return super(CustomFormatter, self).get_value(key, args, kwargs)
         except KeyError:
             if self.allow_empty:
                 logger.debug(
