@@ -102,7 +102,7 @@ class NestedExpansionFormatter(Formatter):
                                             used_args, recursion_depth-1)
 
                 # format the object
-                obj = self.format_field(obj, format_spec)
+                # obj = self.format_field(obj, format_spec)
 
                 # Attempt nested expansion on field.
                 result.append(self.vformat(obj, args, kwargs))
