@@ -105,7 +105,7 @@ class NestedExpansionFormatter(Formatter):
                 # obj = self.format_field(obj, format_spec)
 
                 # Attempt nested expansion on field.
-                result.append(self.vformat(obj, args, kwargs))
+                result.append(self.vformat(str(obj), args, kwargs))
 
         return ''.join(result)
 
