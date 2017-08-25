@@ -128,7 +128,7 @@ class CustomFormatter(NestedExpansionFormatter):
         try:
             result = re.match('^%s$' % self._expr, format_string)
         except TypeError:
-            return format_string.format(**kwargs)
+            return super(CustomFormatter, self).format(format_string, **kwargs)
         if result is not None:
             try:
                 return kwargs[result.group("key")]
@@ -149,11 +149,11 @@ class CustomFormatter(NestedExpansionFormatter):
 
         format_string = matcher.sub(re_replace, format_string)
 
-        return NestedExpansionFormatter().vformat(format_string, args, kwargs)
+        return super(CustomFormatter, self).vformat(format_string, args, kwargs)
 
     def get_value(self, key, args, kwargs):
         try:
-            return NestedExpansionFormatter().get_value(key, args, kwargs)
+            return super(CustomFormatter, self).get_value(key, args, kwargs)
         except KeyError:
             if self.allow_empty:
                 logger.debug(
