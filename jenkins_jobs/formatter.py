@@ -34,7 +34,8 @@ def deep_format(obj, paramdict, allow_empty=False):
     # example, is problematic).
     if hasattr(obj, 'format'):
         try:
-            ret = CustomFormatter(allow_empty).format(obj, **paramdict)
+            #ret = CustomFormatter(allow_empty).format(obj, **paramdict)
+            ret = NestedExpansionFormatter(allow_empty).format(obj, **paramdict)
         except KeyError as exc:
             missing_key = exc.args[0]
             desc = "%s parameter missing to format %s\nGiven:\n%s" % (
@@ -54,7 +55,8 @@ def deep_format(obj, paramdict, allow_empty=False):
         ret = type(obj)()
         for item in obj:
             try:
-                ret[CustomFormatter(allow_empty).format(item, **paramdict)] = \
+                #ret[CustomFormatter(allow_empty).format(item, **paramdict)] = \
+                ret[NestedExpansionFormatter(allow_empty).format(item, **paramdict)] = \
                     deep_format(obj[item], paramdict, allow_empty)
             except KeyError as exc:
                 missing_key = exc.args[0]
@@ -94,18 +96,18 @@ class NestedExpansionFormatter(Formatter):
                 obj, arg_used = self.get_field(field_name, args, kwargs)
                 used_args.add(arg_used)
 
+                # Attempt nested expansion on field.
+                result.append(self.vformat(obj, args, kwargs))
+
                 # do any conversion on the resulting object
                 obj = self.convert_field(obj, conversion)
 
                 # expand the format spec, if needed
-                # format_spec = self._vformat(format_spec, args, kwargs,
-                #                            used_args, recursion_depth-1)
+                format_spec = self._vformat(format_spec, args, kwargs,
+                                            used_args, recursion_depth-1)
 
                 # format the object
-                # obj = self.format_field(obj, format_spec)
-
-                # Attempt nested expansion on field.
-                result.append(self.vformat(str(obj), args, kwargs))
+                result.append(self.format_field(obj, format_spec))
 
         return ''.join(result)
 
