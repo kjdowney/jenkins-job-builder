@@ -35,7 +35,7 @@ def deep_format(obj, paramdict, allow_empty=False):
     if hasattr(obj, 'format'):
         try:
             #ret = CustomFormatter(allow_empty).format(obj, **paramdict)
-            ret = NestedExpansionFormatter(allow_empty).format(obj, **paramdict)
+            ret = NestedExpansionFormatter().format(obj, **paramdict)
         except KeyError as exc:
             missing_key = exc.args[0]
             desc = "%s parameter missing to format %s\nGiven:\n%s" % (
@@ -56,7 +56,7 @@ def deep_format(obj, paramdict, allow_empty=False):
         for item in obj:
             try:
                 #ret[CustomFormatter(allow_empty).format(item, **paramdict)] = \
-                ret[NestedExpansionFormatter(allow_empty).format(item, **paramdict)] = \
+                ret[NestedExpansionFormatter().format(item, **paramdict)] = \
                     deep_format(obj[item], paramdict, allow_empty)
             except KeyError as exc:
                 missing_key = exc.args[0]
