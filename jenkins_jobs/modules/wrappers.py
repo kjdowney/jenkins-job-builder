@@ -24,11 +24,11 @@ Wrappers can alter the way the build is run as well as the build output.
 
 import logging
 import pkg_resources
+import sys
 import xml.etree.ElementTree as XML
 
 from jenkins_jobs.errors import InvalidAttributeError
 from jenkins_jobs.errors import JenkinsJobsException
-from jenkins_jobs.errors import MissingAttributeError
 import jenkins_jobs.modules.base
 from jenkins_jobs.modules.builders import create_builders
 from jenkins_jobs.modules.helpers import artifactory_common_details
@@ -110,27 +110,30 @@ def docker_custom_build_env(registry, xml_parent, data):
     image_type = data['image-type']
     if image_type == 'dockerfile':
         selectorobj.set('class', core_prefix + 'DockerfileImageSelector')
-        XML.SubElement(selectorobj, 'contextPath').text = data.get(
-            'context-path', '.')
-        XML.SubElement(selectorobj, 'dockerfile').text = data.get(
-            'dockerfile', 'Dockerfile')
+        dockerfile_mapping = [
+            ('context-path', 'contextPath', '.'),
+            ('dockerfile', 'dockerfile', 'Dockerfile')]
+        convert_mapping_to_xml(selectorobj, data,
+            dockerfile_mapping, fail_required=True)
+
     elif image_type == 'pull':
         selectorobj.set('class', core_prefix + 'PullDockerImageSelector')
-        XML.SubElement(selectorobj, 'image').text = data.get(
-            'image', '')
+        pull_mapping = [('image', 'image', '')]
+        convert_mapping_to_xml(selectorobj, data,
+            pull_mapping, fail_required=True)
 
     XML.SubElement(entry_xml, 'dockerInstallation').text = data.get(
         'docker-tool', 'Default')
 
     host = XML.SubElement(entry_xml, 'dockerHost')
     host.set('plugin', 'docker-commons')
-    if data.get('host'):
-        XML.SubElement(host, 'uri').text = data['host']
-    if data.get('credentials-id'):
-        XML.SubElement(host, 'credentialsId').text = data['credentials-id']
+    mapping_optional = [
+        ('host', 'uri', None),
+        ('credentials-id', 'credentialsId', None)]
+    convert_mapping_to_xml(host, data, mapping_optional, fail_required=False)
+
     XML.SubElement(entry_xml, 'dockerRegistryCredentials').text = data.get(
         'registry-credentials-id', '')
-
     volumesobj = XML.SubElement(entry_xml, 'volumes')
     volumes = data.get('volumes', [])
     if not volumes:
@@ -143,16 +146,14 @@ def docker_custom_build_env(registry, xml_parent, data):
                 'host-path', '')
             XML.SubElement(volumeobj, 'path').text = volume['volume'].get(
                 'path', '')
-
-    XML.SubElement(entry_xml, 'forcePull').text = str(data.get(
-        'force-pull', False)).lower()
-    XML.SubElement(entry_xml, 'privileged').text = str(data.get(
-        'privileged', False)).lower()
-    XML.SubElement(entry_xml, 'verbose').text = str(data.get(
-        'verbose', False)).lower()
-    XML.SubElement(entry_xml, 'group').text = data.get('group', '')
-    XML.SubElement(entry_xml, 'command').text = data.get('command', '/bin/cat')
-    XML.SubElement(entry_xml, 'net').text = data.get('net', 'bridge')
+    mapping = [
+        ('force-pull', 'forcePull', False),
+        ('privileged', 'privileged', False),
+        ('verbose', 'verbose', False),
+        ('group', 'group', ''),
+        ('command', 'command', '/bin/cat'),
+        ('net', 'net', 'bridge')]
+    convert_mapping_to_xml(entry_xml, data, mapping, fail_required=True)
 
 
 def ci_skip(registry, xml_parent, data):
@@ -310,14 +311,19 @@ def timeout(registry, xml_parent, data):
     prefix = 'hudson.plugins.build__timeout.'
     twrapper = XML.SubElement(xml_parent, prefix + 'BuildTimeoutWrapper')
 
-    plugin_info = registry.get_plugin_info(
-        "Jenkins build timeout plugin")
-    version = pkg_resources.parse_version(plugin_info.get("version", "0"))
+    plugin_info = registry.get_plugin_info("Build Timeout")
+    if "version" not in plugin_info:
+        plugin_info = registry.get_plugin_info("Jenkins build timeout plugin")
+    version = plugin_info.get("version", None)
+    if version:
+        version = pkg_resources.parse_version(version)
 
     valid_strategies = ['absolute', 'no-activity', 'likely-stuck', 'elastic',
                         'deadline']
 
-    if version >= pkg_resources.parse_version("1.14"):
+    # NOTE(toabctl): if we don't know the version assume that we
+    # use a newer version of the plugin
+    if not version or version >= pkg_resources.parse_version("1.14"):
         strategy = data.get('type', 'absolute')
         if strategy not in valid_strategies:
             InvalidAttributeError('type', strategy, valid_strategies)
@@ -327,34 +333,37 @@ def timeout(registry, xml_parent, data):
                 twrapper, 'strategy',
                 {'class': "hudson.plugins.build_timeout."
                           "impl.AbsoluteTimeOutStrategy"})
-            XML.SubElement(strategy_element, 'timeoutMinutes'
-                           ).text = str(data.get('timeout', 3))
+            mapping = [('timeout', 'timeoutMinutes', 3)]
+            convert_mapping_to_xml(strategy_element,
+                data, mapping, fail_required=True)
         elif strategy == "no-activity":
             strategy_element = XML.SubElement(
                 twrapper, 'strategy',
                 {'class': "hudson.plugins.build_timeout."
                           "impl.NoActivityTimeOutStrategy"})
             timeout_sec = int(data.get('timeout', 3)) * MIN_TO_SEC
-            XML.SubElement(strategy_element,
-                           'timeoutSecondsString').text = str(timeout_sec)
+            mapping = [('', 'timeoutSecondsString', timeout_sec)]
+            convert_mapping_to_xml(strategy_element,
+                data, mapping, fail_required=True)
         elif strategy == "likely-stuck":
             strategy_element = XML.SubElement(
                 twrapper, 'strategy',
                 {'class': "hudson.plugins.build_timeout."
                           "impl.LikelyStuckTimeOutStrategy"})
-            XML.SubElement(strategy_element,
-                           'timeoutMinutes').text = str(data.get('timeout', 3))
+            mapping = [('timeout', 'timeoutMinutes', 3)]
+            convert_mapping_to_xml(strategy_element,
+                data, mapping, fail_required=True)
         elif strategy == "elastic":
             strategy_element = XML.SubElement(
                 twrapper, 'strategy',
                 {'class': "hudson.plugins.build_timeout."
                           "impl.ElasticTimeOutStrategy"})
-            XML.SubElement(strategy_element, 'timeoutPercentage'
-                           ).text = str(data.get('elastic-percentage', 0))
-            XML.SubElement(strategy_element, 'numberOfBuilds'
-                           ).text = str(data.get('elastic-number-builds', 0))
-            XML.SubElement(strategy_element, 'timeoutMinutesElasticDefault'
-                           ).text = str(data.get('elastic-default-timeout', 3))
+            mapping = [
+                ('elastic-percentage', 'timeoutPercentage', 0),
+                ('elastic-number-builds', 'numberOfBuilds', 0),
+                ('elastic-default-timeout', 'timeoutMinutesElasticDefault', 3)]
+            convert_mapping_to_xml(strategy_element,
+                data, mapping, fail_required=True)
 
         elif strategy == "deadline":
             strategy_element = XML.SubElement(
@@ -362,11 +371,12 @@ def timeout(registry, xml_parent, data):
                 {'class': "hudson.plugins.build_timeout."
                           "impl.DeadlineTimeOutStrategy"})
             deadline_time = str(data.get('deadline-time', '0:00:00'))
-            XML.SubElement(strategy_element,
-                           'deadlineTime').text = str(deadline_time)
             deadline_tolerance = int(data.get('deadline-tolerance', 1))
-            XML.SubElement(strategy_element, 'deadlineToleranceInMinutes'
-                           ).text = str(deadline_tolerance)
+            mapping = [
+                ('', 'deadlineTime', deadline_time),
+                ('', 'deadlineToleranceInMinutes', deadline_tolerance)]
+            convert_mapping_to_xml(strategy_element,
+                data, mapping, fail_required=True)
 
         actions = []
 
@@ -398,26 +408,19 @@ def timeout(registry, xml_parent, data):
             else:
                 raise JenkinsJobsException("Unsupported BuiltTimeoutWrapper "
                                            "plugin action: {0}".format(action))
-        timeout_env_var = data.get('timeout-var')
-        if timeout_env_var:
-            XML.SubElement(twrapper,
-                           'timeoutEnvVar').text = str(timeout_env_var)
+        mapping = [('timeout-var', 'timeoutEnvVar', None)]
+        convert_mapping_to_xml(twrapper,
+            data, mapping, fail_required=False)
     else:
-        XML.SubElement(twrapper,
-                       'timeoutMinutes').text = str(data.get('timeout', 3))
-        timeout_env_var = data.get('timeout-var')
-        if timeout_env_var:
-            XML.SubElement(twrapper,
-                           'timeoutEnvVar').text = str(timeout_env_var)
-        XML.SubElement(twrapper, 'failBuild'
-                       ).text = str(data.get('fail', 'false')).lower()
-        XML.SubElement(twrapper, 'writingDescription'
-                       ).text = str(data.get('write-description', 'false')
-                                    ).lower()
-        XML.SubElement(twrapper, 'timeoutPercentage'
-                       ).text = str(data.get('elastic-percentage', 0))
-        XML.SubElement(twrapper, 'timeoutMinutesElasticDefault'
-                       ).text = str(data.get('elastic-default-timeout', 3))
+        mapping = [
+            ('timeout', 'timeoutMinutes', 3),
+            ('timeout-var', 'timeoutEnvVar', None),
+            ('fail', 'failBuild', 'false'),
+            ('write-description', 'writingDescription', 'false'),
+            ('elastic-percentage', 'timeoutPercentage', 0),
+            ('elastic-default-timeout', 'timeoutMinutesElasticDefault', 3)]
+        convert_mapping_to_xml(twrapper,
+                data, mapping, fail_required=False)
 
         tout_type = str(data.get('type', 'absolute')).lower()
         if tout_type == 'likely-stuck':
@@ -459,11 +462,8 @@ def ansicolor(registry, xml_parent, data):
     cwrapper = XML.SubElement(
         xml_parent,
         'hudson.plugins.ansicolor.AnsiColorBuildWrapper')
-
-    # Optional colormap
-    colormap = data.get('colormap')
-    if colormap:
-        XML.SubElement(cwrapper, 'colorMapName').text = colormap
+    mapping = [('colormap', 'colorMapName', None)]
+    convert_mapping_to_xml(cwrapper, data, mapping, fail_required=False)
 
 
 def build_keeper(registry, xml_parent, data):
@@ -494,49 +494,42 @@ def build_keeper(registry, xml_parent, data):
     .. literalinclude:: /../../tests/wrappers/fixtures/build-keeper0002.yaml
 
     """
-
     root = XML.SubElement(xml_parent,
                           'org.jenkins__ci.plugins.build__keeper.BuildKeeper')
 
     valid_policies = ('by-day', 'keep-since', 'build-number',
                       'keep-first-failed')
     policy = data.get('policy')
-    build_period = str(data.get('build-period', 0))
-    dont_keep_failed = str(data.get('dont-keep-failed', False)).lower()
+
+    mapping = [
+        ('build-period', 'buildPeriod', 0),
+        ('dont-keep-failed', 'dontKeepFailed', False)]
 
     if policy == 'by-day':
         policy_element = XML.SubElement(root,
                                         'policy',
                                         {'class': 'org.jenkins_ci.plugins.'
                                          'build_keeper.ByDayPolicy'})
-        XML.SubElement(policy_element, 'buildPeriod').text = build_period
-        XML.SubElement(policy_element,
-                       'dontKeepFailed').text = dont_keep_failed
     elif policy == 'keep-since':
         policy_element = XML.SubElement(root,
                                         'policy',
                                         {'class': 'org.jenkins_ci.plugins.'
                                          'build_keeper.KeepSincePolicy'})
-        XML.SubElement(policy_element, 'buildPeriod').text = build_period
-        XML.SubElement(policy_element,
-                       'dontKeepFailed').text = dont_keep_failed
     elif policy == 'build-number':
         policy_element = XML.SubElement(root,
                                         'policy',
                                         {'class': 'org.jenkins_ci.plugins.'
                                          'build_keeper.BuildNumberPolicy'})
-        XML.SubElement(policy_element, 'buildPeriod').text = build_period
-        XML.SubElement(policy_element,
-                       'dontKeepFailed').text = dont_keep_failed
     elif policy == 'keep-first-failed':
         policy_element = XML.SubElement(root,
                                         'policy',
                                         {'class': 'org.jenkins_ci.plugins.'
                                          'build_keeper.KeepFirstFailedPolicy'})
-        XML.SubElement(policy_element, 'numberOfFails').text = str(
-            data.get('number-of-fails', 0))
+        mapping = [('number-of-fails', 'numberOfFails', 0)]
     else:
         InvalidAttributeError('policy', policy, valid_policies)
+
+    convert_mapping_to_xml(policy_element, data, mapping, fail_required=True)
 
 
 def live_screenshot(registry, xml_parent, data):
@@ -603,37 +596,45 @@ def workspace_cleanup(registry, xml_parent, data):
     :arg str external-deletion-command: external deletion command to run
         against files and directories
 
-    Example:
+    Full Example:
 
     .. literalinclude::
-        /../../tests/wrappers/fixtures/workspace-cleanup001.yaml
+        /../../tests/wrappers/fixtures/workspace-cleanup-full.yaml
+       :language: yaml
+
+    Minimal Example:
+
+    .. literalinclude::
+        /../../tests/wrappers/fixtures/workspace-cleanup-min.yaml
        :language: yaml
     """
 
     p = XML.SubElement(xml_parent,
                        'hudson.plugins.ws__cleanup.PreBuildCleanup')
     p.set("plugin", "ws-cleanup")
+
     if "include" in data or "exclude" in data:
         patterns = XML.SubElement(p, 'patterns')
 
     for inc in data.get("include", []):
         ptrn = XML.SubElement(patterns, 'hudson.plugins.ws__cleanup.Pattern')
-        XML.SubElement(ptrn, 'pattern').text = inc
-        XML.SubElement(ptrn, 'type').text = "INCLUDE"
+        mapping = [
+            ('', 'pattern', inc),
+            ('', 'type', "INCLUDE")]
+        convert_mapping_to_xml(ptrn, data, mapping, fail_required=True)
 
     for exc in data.get("exclude", []):
         ptrn = XML.SubElement(patterns, 'hudson.plugins.ws__cleanup.Pattern')
-        XML.SubElement(ptrn, 'pattern').text = exc
-        XML.SubElement(ptrn, 'type').text = "EXCLUDE"
+        mapping = [
+            ('', 'pattern', exc),
+            ('', 'type', "EXCLUDE")]
+        convert_mapping_to_xml(ptrn, data, mapping, fail_required=True)
 
-    deldirs = XML.SubElement(p, 'deleteDirs')
-    deldirs.text = str(data.get("dirmatch", False)).lower()
-
-    XML.SubElement(p, 'cleanupParameter').text = str(
-        data.get('check-parameter', ''))
-
-    XML.SubElement(p, 'externalDelete').text = str(
-        data.get('external-deletion-command', ''))
+    mapping = [
+        ("dirmatch", 'deleteDirs', False),
+        ('check-parameter', 'cleanupParameter', ''),
+        ('external-deletion-command', 'externalDelete', '')]
+    convert_mapping_to_xml(p, data, mapping, fail_required=True)
 
 
 def m2_repository_cleanup(registry, xml_parent, data):
@@ -807,7 +808,8 @@ def build_name(registry, xml_parent, data):
     bsetter = XML.SubElement(xml_parent,
                              'org.jenkinsci.plugins.buildnamesetter.'
                              'BuildNameSetter')
-    XML.SubElement(bsetter, 'template').text = data['name']
+    mapping = [('name', 'template', None)]
+    convert_mapping_to_xml(bsetter, data, mapping, fail_required=True)
 
 
 def port_allocator(registry, xml_parent, data):
@@ -898,19 +900,14 @@ def copy_to_slave(registry, xml_parent, data):
 
     XML.SubElement(cs, 'includes').text = ','.join(data.get('includes', ['']))
     XML.SubElement(cs, 'excludes').text = ','.join(data.get('excludes', ['']))
-    XML.SubElement(cs, 'flatten').text = \
-        str(data.get('flatten', False)).lower()
-    XML.SubElement(cs, 'includeAntExcludes').text = \
-        str(data.get('include-ant-excludes', False)).lower()
 
-    rel = str(data.get('relative-to', 'userContent'))
-    opt = ('home', 'somewhereElse', 'userContent', 'workspace')
-    if rel not in opt:
-        raise ValueError('relative-to must be one of %r' % opt)
-    XML.SubElement(cs, 'relativeTo').text = rel
-
-    # seems to always be false, can't find it in source code
-    XML.SubElement(cs, 'hudsonHomeRelative').text = 'false'
+    locations = ['home', 'somewhereElse', 'userContent', 'workspace']
+    mapping = [
+        ('flatten', 'flatten', False),
+        ('include-ant-excludes', 'includeAntExcludes', False),
+        ('relative-to', 'relativeTo', 'userContent', locations),
+        ('', 'hudsonHomeRelative', False)]
+    convert_mapping_to_xml(cs, data, mapping, fail_required=True)
 
 
 def inject(registry, xml_parent, data):
@@ -963,10 +960,10 @@ def inject_ownership_variables(registry, xml_parent, data):
     """
     ownership = XML.SubElement(xml_parent, 'com.synopsys.arc.jenkins.plugins.'
                                'ownership.wrappers.OwnershipBuildWrapper')
-    XML.SubElement(ownership, 'injectNodeOwnership').text = \
-        str(data.get('node-variables', False)).lower()
-    XML.SubElement(ownership, 'injectJobOwnership').text = \
-        str(data.get('job-variables', False)).lower()
+    mapping = [
+        ('node-variables', 'injectNodeOwnership', False),
+        ('job-variables', 'injectJobOwnership', False)]
+    convert_mapping_to_xml(ownership, data, mapping, fail_required=True)
 
 
 def inject_passwords(registry, xml_parent, data):
@@ -987,17 +984,21 @@ def inject_passwords(registry, xml_parent, data):
 
     """
     eib = XML.SubElement(xml_parent, 'EnvInjectPasswordWrapper')
-    XML.SubElement(eib, 'injectGlobalPasswords').text = \
-        str(data.get('global', False)).lower()
-    XML.SubElement(eib, 'maskPasswordParameters').text = \
-        str(data.get('mask-password-params', False)).lower()
+    mapping = [
+        ('global', 'injectGlobalPasswords', False),
+        ('mask-password-params', 'maskPasswordParameters', False)]
+    convert_mapping_to_xml(eib, data, mapping, fail_required=True)
+
     entries = XML.SubElement(eib, 'passwordEntries')
     passwords = data.get('job-passwords', [])
     if passwords:
         for password in passwords:
             entry = XML.SubElement(entries, 'EnvInjectPasswordEntry')
-            XML.SubElement(entry, 'name').text = password['name']
-            XML.SubElement(entry, 'value').text = password['password']
+            mapping = [
+                ('name', 'name', None),
+                ('password', 'value', None)]
+            convert_mapping_to_xml(entry, password,
+                mapping, fail_required=True)
 
 
 def env_file(registry, xml_parent, data):
@@ -1044,21 +1045,17 @@ def env_script(registry, xml_parent, data):
 
     """
     el = XML.SubElement(xml_parent, 'com.lookout.jenkins.EnvironmentScript')
-    XML.SubElement(el, 'script').text = data.get('script-content', '')
 
     valid_script_types = {
         'unix-script': 'unixScript',
         'power-shell': 'powerShell',
         'batch-script': 'batchScript',
     }
-    script_type = data.get('script-type', 'unix-script')
-    if script_type not in valid_script_types:
-        raise InvalidAttributeError('script-type', script_type,
-                                    valid_script_types)
-    XML.SubElement(el, 'scriptType').text = valid_script_types[script_type]
-
-    only_on_parent = str(data.get('only-run-on-parent', False)).lower()
-    XML.SubElement(el, 'onlyRunOnParent').text = only_on_parent
+    mapping = [
+        ('script-content', 'script', ''),
+        ('script-type', 'scriptType', 'unix-script', valid_script_types),
+        ('only-run-on-parent', 'onlyRunOnParent', False)]
+    convert_mapping_to_xml(el, data, mapping, fail_required=True)
 
 
 def jclouds(registry, xml_parent, data):
@@ -1144,23 +1141,17 @@ def openstack(registry, xml_parent, data):
             instances_to_run = XML.SubElement(
                 instances_wrapper, tag_prefix + 'InstancesToRun')
 
-            try:
-                cloud_name = instance['cloud-name']
-                template_name = instance['template-name']
-            except KeyError as exception:
-                raise MissingAttributeError(exception.args[0])
-
-            XML.SubElement(instances_to_run, 'cloudName').text = cloud_name
+            instance_mapping = [('cloud-name', 'cloudName', None),
+                ('count', 'count', 1)]
 
             if instance.get('manual-template', False):
-                XML.SubElement(instances_to_run,
-                               'manualTemplateName').text = template_name
+                instance_mapping.append(('template-name',
+                    'manualTemplateName', None))
             else:
-                XML.SubElement(instances_to_run,
-                               'templateName').text = template_name
-
-            XML.SubElement(instances_to_run, 'count').text = str(
-                instance.get('count', 1))
+                instance_mapping.append(('template-name',
+                    'templateName', None))
+            convert_mapping_to_xml(instances_to_run,
+                instance, instance_mapping, fail_required=True)
 
     if data.get('single-use', False):
         XML.SubElement(xml_parent, tag_prefix + 'JCloudsOneOffSlave')
@@ -1204,20 +1195,19 @@ def release(registry, xml_parent, data):
                              'hudson.plugins.release.ReleaseWrapper')
     # For 'keep-forever', the sense of the XML flag is the opposite of
     # the YAML flag.
-    no_keep_forever = 'false'
-    if str(data.get('keep-forever', True)).lower() == 'false':
-        no_keep_forever = 'true'
-    XML.SubElement(relwrap, 'doNotKeepLog').text = no_keep_forever
-    XML.SubElement(relwrap, 'overrideBuildParameters').text = str(
-        data.get('override-build-parameters', False)).lower()
-    XML.SubElement(relwrap, 'releaseVersionTemplate').text = data.get(
-        'version-template', '')
+    mapping = [
+        ('do-not-keep-log',
+         'doNotKeepLog',
+         not data.get('keep-forever', True)),
+        ('override-build-parameters', 'overrideBuildParameters', False),
+        ('version-template', 'releaseVersionTemplate', '')]
+    convert_mapping_to_xml(relwrap, data, mapping, fail_required=True)
+
     parameters = data.get('parameters', [])
     if parameters:
         pdef = XML.SubElement(relwrap, 'parameterDefinitions')
         for param in parameters:
             registry.dispatch('parameter', pdef, param)
-
     builder_steps = {
         'pre-build': 'preBuildSteps',
         'post-build': 'postBuildSteps',
@@ -1294,45 +1284,51 @@ def sauce_ondemand(registry, xml_parent, data):
     """
     sauce = XML.SubElement(xml_parent, 'hudson.plugins.sauce__ondemand.'
                            'SauceOnDemandBuildWrapper')
-    XML.SubElement(sauce, 'enableSauceConnect').text = str(data.get(
-        'enable-sauce-connect', False)).lower()
-    host = data.get('sauce-host', '')
-    XML.SubElement(sauce, 'seleniumHost').text = host
-    port = data.get('sauce-port', '')
-    XML.SubElement(sauce, 'seleniumPort').text = port
+    mapping = [
+        ('enable-sauce-connect', 'enableSauceConnect', False),
+        ('sauce-host', 'seleniumHost', ''),
+        ('sauce-port', 'seleniumPort', '')
+        ('launch-sauce-connect-on-slave', 'launchSauceConnectOnSlave', False),
+        ('https-protocol', 'httpsProtocol', ''),
+        ('sauce-connect-options', 'options', '')]
+    convert_mapping_to_xml(sauce, data, mapping, fail_required=True)
+
     # Optional override global authentication
     username = data.get('override-username')
     key = data.get('override-api-access-key')
     if username and key:
         cred = XML.SubElement(sauce, 'credentials')
-        XML.SubElement(cred, 'username').text = username
-        XML.SubElement(cred, 'apiKey').text = key
+        mapping = [
+            ('override-username', 'username', None),
+            ('override-api-access-key', 'apiKey', None)]
+        convert_mapping_to_xml(cred, data, mapping, fail_required=True)
     atype = data.get('type', 'selenium')
     info = XML.SubElement(sauce, 'seleniumInformation')
+
     if atype == 'selenium':
-        url = data.get('starting-url', '')
-        XML.SubElement(info, 'startingURL').text = url
+        selenium_mapping = [('starting-url', 'seleniumBrowsers', ''),
+            ('', 'isWebDriver', False)]
+        convert_mapping_to_xml(
+            info, data, selenium_mapping, fail_required=True)
+
         browsers = XML.SubElement(info, 'seleniumBrowsers')
         for platform in data['platforms']:
-            XML.SubElement(browsers, 'string').text = platform
-        XML.SubElement(info, 'isWebDriver').text = 'false'
+            mapping = [('', 'string', platform)]
+            convert_mapping_to_xml(browsers, data, mapping, fail_required=True)
         XML.SubElement(sauce, 'seleniumBrowsers',
                        {'reference': '../seleniumInformation/'
                         'seleniumBrowsers'})
     if atype == 'webdriver':
         browsers = XML.SubElement(info, 'webDriverBrowsers')
         for platform in data['platforms']:
-            XML.SubElement(browsers, 'string').text = platform
-        XML.SubElement(info, 'isWebDriver').text = 'true'
+            mapping = [('', 'string', platform)]
+            convert_mapping_to_xml(browsers, data, mapping, fail_required=True)
+        webdriver_mapping = [('', 'isWebDriver', True)]
+        convert_mapping_to_xml(
+            info, data, webdriver_mapping, fail_required=True)
         XML.SubElement(sauce, 'webDriverBrowsers',
                        {'reference': '../seleniumInformation/'
                         'webDriverBrowsers'})
-    XML.SubElement(sauce, 'launchSauceConnectOnSlave').text = str(data.get(
-        'launch-sauce-connect-on-slave', False)).lower()
-    protocol = data.get('https-protocol', '')
-    XML.SubElement(sauce, 'httpsProtocol').text = protocol
-    options = data.get('sauce-connect-options', '')
-    XML.SubElement(sauce, 'options').text = options
 
 
 def sonar(registry, xml_parent, data):
@@ -1430,8 +1426,8 @@ def pre_scm_buildstep(registry, xml_parent, data):
         for edited_node in create_builders(registry, step):
             bs.append(edited_node)
     if version >= pkg_resources.parse_version("0.3"):
-        XML.SubElement(bsp, 'failOnError').text = str(data.get(
-            'failOnError', False)).lower()
+        mapping = [('failOnError', 'failOnError', False)]
+        convert_mapping_to_xml(bsp, data, mapping, fail_required=True)
 
 
 def logstash(registry, xml_parent, data):
@@ -1463,34 +1459,22 @@ def logstash(registry, xml_parent, data):
                               'LogstashBuildWrapper')
     logstash.set('plugin', 'logstash@0.8.0')
 
-    redis_bool = XML.SubElement(logstash, 'useRedis')
-    redis_bool.text = str(data.get('use-redis', True)).lower()
+    mapping = [('use-redis', 'useRedis', True)]
+    convert_mapping_to_xml(logstash, data, mapping, fail_required=True)
 
     if data.get('use-redis'):
         redis_config = data.get('redis', {})
         redis_sub_element = XML.SubElement(logstash, 'redis')
 
-        host_sub_element = XML.SubElement(redis_sub_element, 'host')
-        host_sub_element.text = str(
-            redis_config.get('host', 'localhost'))
-
-        port_sub_element = XML.SubElement(redis_sub_element, 'port')
-        port_sub_element.text = str(redis_config.get('port', '6379'))
-
-        database_numb_sub_element = XML.SubElement(redis_sub_element, 'numb')
-        database_numb_sub_element.text = \
-            str(redis_config.get('database-number', '0'))
-
-        database_pass_sub_element = XML.SubElement(redis_sub_element, 'pass')
-        database_pass_sub_element.text = \
-            str(redis_config.get('database-password', ''))
-
-        data_type_sub_element = XML.SubElement(redis_sub_element, 'dataType')
-        data_type_sub_element.text = \
-            str(redis_config.get('data-type', 'list'))
-
-        key_sub_element = XML.SubElement(redis_sub_element, 'key')
-        key_sub_element.text = str(redis_config.get('key', 'logstash'))
+        mapping = [
+            ('host', 'host', 'localhost'),
+            ('port', 'port', '6379'),
+            ('database-number', 'numb', '0'),
+            ('database-password', 'pass', ''),
+            ('data-type', 'dataType', 'list'),
+            ('key', 'key', 'logstash')]
+        convert_mapping_to_xml(redis_sub_element,
+            redis_config, mapping, fail_required=True)
 
 
 def mongo_db(registry, xml_parent, data):
@@ -1575,14 +1559,15 @@ def matrix_tie_parent(registry, xml_parent, data):
     You can use the top level ``node`` parameter to control where the parent
     job is tied in Jenkins 1.532 and higher.
 
-    :arg str node: Name of the node.
+    :arg str node: Name of the node (required)
 
     Example:
 
     .. literalinclude:: /../../tests/wrappers/fixtures/matrix-tie-parent.yaml
     """
     mtp = XML.SubElement(xml_parent, 'matrixtieparent.BuildWrapperMtp')
-    XML.SubElement(mtp, 'labelName').text = data['node']
+    mapping = [('node', 'labelName', None)]
+    convert_mapping_to_xml(mtp, data, mapping, fail_required=True)
 
 
 def exclusion(registry, xml_parent, data):
@@ -1606,10 +1591,10 @@ def exclusion(registry, xml_parent, data):
     ids = XML.SubElement(exl, 'ids')
     resources = data.get('resources', [])
     for resource in resources:
-        dit = \
-            XML.SubElement(ids,
+        dit = XML.SubElement(ids,
                            'org.jvnet.hudson.plugins.exclusion.DefaultIdType')
-        XML.SubElement(dit, 'name').text = str(resource).upper()
+        mapping = [('', 'name', resource.upper())]
+        convert_mapping_to_xml(dit, data, mapping, fail_required=True)
 
 
 def ssh_agent_credentials(registry, xml_parent, data):
@@ -1750,10 +1735,6 @@ def credentials_binding(registry, xml_parent, data):
             'com.cloudbees.jenkins.plugins.awscredentials'
             '.AmazonWebServicesCredentialsBinding'
     }
-    if not data:
-        raise JenkinsJobsException('At least one binding-type must be '
-                                   'specified for the credentials-binding '
-                                   'element')
     for binding in data:
         for binding_type, params in binding.items():
             if binding_type not in binding_types.keys():
@@ -1763,26 +1744,24 @@ def credentials_binding(registry, xml_parent, data):
             binding_xml = XML.SubElement(bindings_xml,
                                          binding_types[binding_type])
             if binding_type == 'username-password-separated':
-                try:
-                    XML.SubElement(binding_xml, 'usernameVariable'
-                                   ).text = params['username']
-                    XML.SubElement(binding_xml, 'passwordVariable'
-                                   ).text = params['password']
-                except KeyError as e:
-                    raise MissingAttributeError(e.args[0])
+                mapping = [
+                    ('username', 'usernameVariable', None),
+                    ('password', 'passwordVariable', None)]
+                convert_mapping_to_xml(
+                    binding_xml, params, mapping, fail_required=True)
             elif binding_type == 'amazon-web-services':
-                try:
-                    XML.SubElement(binding_xml, 'accessKeyVariable'
-                                   ).text = params['access-key']
-                    XML.SubElement(binding_xml, 'secretKeyVariable'
-                                   ).text = params['secret-key']
-                except KeyError as e:
-                    raise MissingAttributeError(e.args[0])
+                mapping = [
+                    ('access-key', 'accessKeyVariable', None),
+                    ('secret-key', 'secretKeyVariable', None)]
+                convert_mapping_to_xml(
+                    binding_xml, params, mapping, fail_required=True)
             else:
-                variable_xml = XML.SubElement(binding_xml, 'variable')
-                variable_xml.text = params.get('variable')
-            credential_xml = XML.SubElement(binding_xml, 'credentialsId')
-            credential_xml.text = params.get('credential-id')
+                mapping = [('variable', 'variable', None)]
+                convert_mapping_to_xml(
+                    binding_xml, params, mapping, fail_required=False)
+            mapping = [('credential-id', 'credentialsId', None)]
+            convert_mapping_to_xml(binding_xml,
+                params, mapping, fail_required=False)
 
 
 def custom_tools(registry, xml_parent, data):
@@ -1810,17 +1789,16 @@ def custom_tools(registry, xml_parent, data):
     tool_node = base + '.CustomToolInstallWrapper_-SelectedTool'
     for tool in tools:
         tool_wrapper = XML.SubElement(wrapper_tools, tool_node)
-        XML.SubElement(tool_wrapper, 'name').text = str(tool)
+        mapping = [('', 'name', tool)]
+        convert_mapping_to_xml(tool_wrapper, data, mapping, fail_required=True)
 
     opts = XML.SubElement(wrapper,
                           'multiconfigOptions')
-    skip_install = str(data.get('skip-master-install', 'false'))
-    XML.SubElement(opts,
-                   'skipMasterInstallation').text = skip_install
+    mapping = [('skip-master-install', 'skipMasterInstallation', False)]
+    convert_mapping_to_xml(opts, data, mapping, fail_required=True)
 
-    convert_home = str(data.get('convert-homes-to-upper', 'false'))
-    XML.SubElement(wrapper,
-                   'convertHomesToUppercase').text = convert_home
+    mapping = [('convert-homes-to-upper', 'convertHomesToUppercase', False)]
+    convert_mapping_to_xml(wrapper, data, mapping, fail_required=True)
 
 
 def nodejs_installator(registry, xml_parent, data):
@@ -1828,7 +1806,7 @@ def nodejs_installator(registry, xml_parent, data):
     Requires the Jenkins :jenkins-wiki:`NodeJS Plugin
     <NodeJS+Plugin>`.
 
-    :arg str name: nodejs installation name
+    :arg str name: nodejs installation name (required)
 
     Example:
 
@@ -1838,11 +1816,8 @@ def nodejs_installator(registry, xml_parent, data):
     npm_node = XML.SubElement(xml_parent,
                               'jenkins.plugins.nodejs.tools.'
                               'NpmPackagesBuildWrapper')
-
-    try:
-        XML.SubElement(npm_node, 'nodeJSInstallationName').text = data['name']
-    except KeyError as e:
-        raise MissingAttributeError(e.args[0])
+    mapping = [('name', 'nodeJSInstallationName', None)]
+    convert_mapping_to_xml(npm_node, data, mapping, fail_required=True)
 
 
 def xvnc(registry, xml_parent, data):
@@ -1892,8 +1867,8 @@ def job_log_logger(registry, xml_parent, data):
     top = XML.SubElement(xml_parent,
                          'org.jenkins.ci.plugins.jobloglogger.'
                          'JobLogLoggerBuildWrapper')
-    XML.SubElement(top, 'suppressEmpty').text = str(
-        data.get('suppress-empty', True)).lower()
+    mapping = [('suppress-empty', 'suppressEmpty', True)]
+    convert_mapping_to_xml(top, data, mapping, fail_required=True)
 
 
 def xvfb(registry, xml_parent, data):
@@ -2003,39 +1978,36 @@ def android_emulator(registry, xml_parent, data):
     if data.get('avd'):
         XML.SubElement(root, 'avdName').text = str(data['avd'])
 
-    if data.get('os'):
-        XML.SubElement(root, 'osVersion').text = str(data['os'])
-        XML.SubElement(root, 'screenDensity').text = str(
-            data.get('screen-density', 'mdpi'))
-        XML.SubElement(root, 'screenResolution').text = str(
-            data.get('screen-resolution', 'WVGA'))
-        XML.SubElement(root, 'deviceLocale').text = str(
-            data.get('locale', 'en_US'))
-        XML.SubElement(root, 'targetAbi').text = str(
-            data.get('target-abi', ''))
-        XML.SubElement(root, 'sdCardSize').text = str(data.get('sd-card', ''))
+    else:
+        mapping = [
+            ('os', 'osVersion', None),
+            ('screen-density', 'screenDensity', 'mdpi'),
+            ('screen-resolution', 'screenResolution', 'WVGA'),
+            ('locale', 'deviceLocale', 'en_US'),
+            ('target-abi', 'targetAbi', ''),
+            ('sd-card', 'sdCardSize', '')
+        ]
+        convert_mapping_to_xml(root, data, mapping, fail_required=True)
 
     hardware = XML.SubElement(root, 'hardwareProperties')
     for prop_name, prop_val in data.get('hardware-properties', {}).items():
         prop_node = XML.SubElement(hardware,
                                    'hudson.plugins.android__emulator'
                                    '.AndroidEmulator_-HardwareProperty')
-        XML.SubElement(prop_node, 'key').text = str(prop_name)
-        XML.SubElement(prop_node, 'value').text = str(prop_val)
-
-    XML.SubElement(root, 'wipeData').text = str(
-        data.get('wipe', False)).lower()
-    XML.SubElement(root, 'showWindow').text = str(
-        data.get('show-window', False)).lower()
-    XML.SubElement(root, 'useSnapshots').text = str(
-        data.get('snapshot', False)).lower()
-    XML.SubElement(root, 'deleteAfterBuild').text = str(
-        data.get('delete', False)).lower()
-    XML.SubElement(root, 'startupDelay').text = str(
-        data.get('startup-delay', 0))
-    XML.SubElement(root, 'commandLineOptions').text = str(
-        data.get('commandline-options', ''))
-    XML.SubElement(root, 'executable').text = str(data.get('exe', ''))
+        mapping = [
+            ('', 'key', prop_name),
+            ('', 'value', prop_val)]
+        convert_mapping_to_xml(prop_node, data, mapping, fail_required=True)
+    mapping = [
+        ('wipe', 'wipeData', False),
+        ('show-window', 'showWindow', False),
+        ('snapshot', 'useSnapshots', False),
+        ('delete', 'deleteAfterBuild', False),
+        ('startup-delay', 'startupDelay', 0),
+        ('commandline-options', 'commandLineOptions', ''),
+        ('exe', 'executable', ''),
+    ]
+    convert_mapping_to_xml(root, data, mapping, fail_required=True)
 
 
 def artifactory_maven(registry, xml_parent, data):
@@ -2072,15 +2044,12 @@ def artifactory_maven(registry, xml_parent, data):
     artifactory_common_details(details, data)
 
     if 'repo-key' in data:
-        XML.SubElement(
-            details, 'downloadRepositoryKey').text = data['repo-key']
+        mapping = [('repo-key', 'downloadRepositoryKey', None)]
     else:
-        XML.SubElement(
-            details, 'downloadSnapshotRepositoryKey').text = data.get(
-                'snapshot-repo-key', '')
-        XML.SubElement(
-            details, 'downloadReleaseRepositoryKey').text = data.get(
-                'release-repo-key', '')
+        mapping = [
+            ('snapshot-repo-key', 'downloadSnapshotRepositoryKey', ''),
+            ('release-repo-key', 'downloadReleaseRepositoryKey', '')]
+    convert_mapping_to_xml(details, data, mapping, fail_required=True)
 
 
 def artifactory_generic(registry, xml_parent, data):
@@ -2143,7 +2112,9 @@ def artifactory_generic(registry, xml_parent, data):
 
     # Get plugin information to maintain backwards compatibility
     info = registry.get_plugin_info('artifactory')
-    version = pkg_resources.parse_version(info.get('version', '0'))
+    # Note: Assume latest version of plugin is preferred config format
+    version = pkg_resources.parse_version(
+        info.get('version', str(sys.maxsize)))
 
     if version >= pkg_resources.parse_version('2.3.0'):
         deployReleaseRepo = XML.SubElement(details, 'deployReleaseRepository')
@@ -2381,6 +2352,8 @@ def version_number(parser, xml_parent, data):
         number to (required)
     :arg str format-string: Format string used to generate version number
         (required)
+    :arg str prefix-variable: Variable that contains version number prefix
+        (optional)
     :arg bool skip-failed-builds: If the build fails, DO NOT increment any
         auto-incrementing component of the version number (default: false)
     :arg bool display-name: Use the version number for the build display
@@ -2410,6 +2383,7 @@ def version_number(parser, xml_parent, data):
         # option, xml name, default value
         ("variable-name", 'environmentVariableName', None),
         ("format-string", 'versionNumberString', None),
+        ("prefix-variable", 'environmentPrefixVariable', ''),
         ("skip-failed-builds", 'skipFailedBuilds', False),
         ("display-name", 'useAsBuildDisplayName', False),
         ("start-date", 'projectStartDate', '1970-1-1 00:00:00.0 UTC'),
@@ -2420,6 +2394,86 @@ def version_number(parser, xml_parent, data):
     ]
 
     convert_mapping_to_xml(version_number, data, mapping, fail_required=True)
+
+
+def github_pull_request(parser, xml_parent, data):
+    """yaml: github-pull-request
+    Set GitHub commit status with custom context and message.
+    Requires the Jenkins :jenkins-wiki:`GitHub Pull Request Builder Plugin
+    <GitHub+pull+request+builder+plugin>`.
+
+    :arg bool show-matrix-status: Only post commit status of parent matrix job
+        (default false)
+    :arg str status-context: The context to include on PR status comments
+        (default '')
+    :arg str triggered-status: The status message to set when the build has
+        been triggered (default '')
+    :arg str started-status: The status message to set when the build has
+        been started (default '')
+    :arg str status-url: The status URL to set (default '')
+    :arg bool status-add-test-results: Add test result one-liner to status
+        message (default false)
+    :arg list statuses: List of custom statuses on the commit for when a build
+        is completed
+
+        :Status:
+            * **message** (`str`) -- The message that is appended to a comment
+              when a build finishes with the desired build status. If no status
+              updates should be made when a build finishes with the indicated
+              build status, use "--none--" to alert the trigger. (required)
+            * **result** (`str`) -- Build result. Can be one of 'SUCCESS',
+              'ERROR' or 'FAILURE'. (required)
+
+    Minimal Example:
+
+    .. literalinclude::
+        /../../tests/wrappers/fixtures/github-pull-request-minimal.yaml
+       :language: yaml
+
+    Full Example:
+
+    .. literalinclude::
+        /../../tests/wrappers/fixtures/github-pull-request-full.yaml
+       :language: yaml
+
+    """
+    ghprb = XML.SubElement(
+        xml_parent, 'org.jenkinsci.plugins.ghprb.upstream.GhprbUpstreamStatus'
+    )
+
+    mapping = [
+        # option, xml name, default value
+        ("show-matrix-status", 'showMatrixStatus', False),
+        ("status-context", 'commitStatusContext', ''),
+        ("triggered-status", 'triggeredStatus', ''),
+        ("started-status", 'startedStatus', ''),
+        ("status-url", 'statusUrl', ''),
+        ("status-add-test-results", 'addTestResults', False)
+    ]
+    convert_mapping_to_xml(ghprb, data, mapping, fail_required=True)
+
+    statuses = data.get('statuses', [])
+    if statuses:
+        status_mapping = [
+            ('message', 'message', None),
+            ('result', 'result', ''),
+        ]
+        result_list = ['ERROR', 'SUCCESS', 'FAILURE']
+
+        completed_tag = XML.SubElement(ghprb, 'completedStatus')
+        for status in statuses:
+            result = status.get('result', '')
+            if result not in result_list:
+                raise JenkinsJobsException(
+                    "'result' must be one of: " + ', '.join(result_list))
+
+            result_tag = XML.SubElement(
+                completed_tag,
+                'org.jenkinsci.plugins.ghprb.extensions'
+                '.comments.GhprbBuildResultMessage'
+            )
+            convert_mapping_to_xml(
+                result_tag, status, status_mapping, fail_required=True)
 
 
 class Wrappers(jenkins_jobs.modules.base.Base):

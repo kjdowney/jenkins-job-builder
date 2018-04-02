@@ -14,7 +14,6 @@
 
 import logging
 
-import six
 import xml.etree.ElementTree as XML
 
 from jenkins_jobs.errors import InvalidAttributeError
@@ -251,10 +250,7 @@ def findbugs_settings(xml_parent, data):
 
 
 def get_value_from_yaml_or_config_file(key, section, data, jjb_config):
-    result = data.get(key, '')
-    if result == '':
-        result = jjb_config.get_plugin_config(section, key)
-    return result
+    return jjb_config.get_plugin_config(section, key, data.get(key, ''))
 
 
 def cloudformation_region_dict():
@@ -283,29 +279,28 @@ def cloudformation_stack(xml_parent, stack, xml_tag, stacks, region_dict):
     step = XML.SubElement(
         stacks, 'com.syncapse.jenkinsci.plugins.'
                 'awscloudformationwrapper.' + xml_tag)
-    try:
-        XML.SubElement(step, 'stackName').text = stack['name']
-        XML.SubElement(step, 'awsAccessKey').text = stack['access-key']
-        XML.SubElement(step, 'awsSecretKey').text = stack['secret-key']
-        region = stack['region']
-    except KeyError as e:
-        raise MissingAttributeError(e.args[0])
-    if region not in region_dict:
-        raise InvalidAttributeError('region', region, region_dict.keys())
-    XML.SubElement(step, 'awsRegion').text = region_dict.get(region)
+
     if xml_tag == 'SimpleStackBean':
-        prefix = str(stack.get('prefix', False)).lower()
-        XML.SubElement(step, 'isPrefixSelected').text = prefix
+        mapping = [('prefix', 'isPrefixSelected', False)]
     else:
-        XML.SubElement(step, 'description').text = stack.get('description', '')
-        XML.SubElement(step, 'parameters').text = ','.join(
-            stack.get('parameters', []))
-        XML.SubElement(step, 'timeout').text = str(stack.get('timeout', '0'))
-        XML.SubElement(step, 'sleep').text = str(stack.get('sleep', '0'))
-        try:
-            XML.SubElement(step, 'cloudFormationRecipe').text = stack['recipe']
-        except KeyError as e:
-            raise MissingAttributeError(e.args[0])
+        parameters_value = ','.join(stack.get('parameters', []))
+        mapping = [
+            ('description', 'description', ''),
+            ('', 'parameters', parameters_value),
+            ('timeout', 'timeout', '0'),
+            ('sleep', 'sleep', '0'),
+            ('recipe', 'cloudFormationRecipe', None)]
+
+    cloudformation_stack_mapping = [
+        ('name', 'stackName', None),
+        ('access-key', 'awsAccessKey', None),
+        ('secret-key', 'awsSecretKey', None),
+        ('region', 'awsRegion', None, region_dict)]
+    for map in mapping:
+        cloudformation_stack_mapping.append(map)
+
+    convert_mapping_to_xml(step, stack,
+        cloudformation_stack_mapping, fail_required=True)
 
 
 def include_exclude_patterns(xml_parent, data, yaml_prefix,
@@ -469,39 +464,31 @@ def test_fairy_common(xml_element, data):
     convert_mapping_to_xml(xml_element, data, mappings, fail_required=True)
 
 
-def trigger_get_parameter_order(registry):
+def trigger_get_parameter_order(registry, plugin):
     logger = logging.getLogger("%s:trigger_get_parameter_order" % __name__)
-    # original order
-    param_order = [
-        'predefined-parameters',
-        'git-revision',
-        'property-file',
-        'current-parameters',
-        'node-parameters',
-        'svn-revision',
-        'restrict-matrix-project',
-        'node-label-name',
-        'node-label',
-        'boolean-parameters',
-    ]
 
-    try:
-        if registry.jjb_config.config_parser.getboolean(
-                '__future__', 'param_order_from_yaml'):
-            param_order = None
-    except six.moves.configparser.NoSectionError:
-        pass
-
-    if param_order:
+    if str(registry.jjb_config.get_plugin_config(
+            plugin, 'param_order_from_yaml', True)).lower() == 'false':
         logger.warning(
-            "Using deprecated order for parameter sets in "
-            "triggered-parameterized-builds. This will be changed in a future "
-            "release to inherit the order from the user defined yaml. To "
-            "enable this behaviour immediately, set the config option "
-            "'__future__.param_order_from_yaml' to 'true' and change the "
-            "input job configuration to use the desired order")
+            "Using deprecated order for parameter sets in %s. It is "
+            "recommended that you update your job definition instead of "
+            "enabling use of the old hardcoded order", plugin)
 
-    return param_order
+        # deprecated order
+        return [
+            'predefined-parameters',
+            'git-revision',
+            'property-file',
+            'current-parameters',
+            'node-parameters',
+            'svn-revision',
+            'restrict-matrix-project',
+            'node-label-name',
+            'node-label',
+            'boolean-parameters',
+        ]
+
+    return None
 
 
 def trigger_project(tconfigs, project_def, param_order=None):
@@ -540,11 +527,11 @@ def trigger_project(tconfigs, project_def, param_order=None):
         elif param_type == 'property-file':
             params = XML.SubElement(tconfigs,
                                     pt_prefix + 'FileBuildParameters')
-            properties = XML.SubElement(params, 'propertiesFile')
-            properties.text = project_def['property-file']
-            failOnMissing = XML.SubElement(params, 'failTriggerOnMissing')
-            failOnMissing.text = str(project_def.get('fail-on-missing',
-                                                     False)).lower()
+            property_file_mapping = [
+                ('property-file', 'propertiesFile', None),
+                ('fail-on-missing', 'failTriggerOnMissing', False)]
+            convert_mapping_to_xml(params, project_def,
+                property_file_mapping, fail_required=True)
             if 'file-encoding' in project_def:
                 XML.SubElement(params, 'encoding'
                                ).text = project_def['file-encoding']
@@ -552,13 +539,13 @@ def trigger_project(tconfigs, project_def, param_order=None):
                 # TODO: These parameters only affect execution in
                 # publishers of matrix projects; we should warn if they are
                 # used in other contexts.
-                XML.SubElement(params, "useMatrixChild").text = (
-                    str(project_def['use-matrix-child-files']).lower())
-                XML.SubElement(params, "combinationFilter").text = (
-                    project_def.get('matrix-child-combination-filter', ''))
-                XML.SubElement(params, "onlyExactRuns").text = (
-                    str(project_def.get('only-exact-matrix-child-runs',
-                                        False)).lower())
+                use_matrix_child_files_mapping = [
+                    ('use-matrix-child-files', "useMatrixChild", None),
+                    ('matrix-child-combination-filter',
+                        "combinationFilter", ''),
+                    ('only-exact-matrix-child-runs', "onlyExactRuns", False)]
+                convert_mapping_to_xml(params, project_def,
+                    use_matrix_child_files_mapping, fail_required=True)
         elif param_type == 'current-parameters' and param_value:
             XML.SubElement(tconfigs, pt_prefix + 'CurrentBuildParameters')
         elif param_type == 'node-parameters' and param_value:
@@ -595,9 +582,11 @@ def trigger_project(tconfigs, project_def, param_order=None):
             params_list = param_value
             for name, value in params_list.items():
                 param_tag = XML.SubElement(config_tag, param_tag_text)
-                XML.SubElement(param_tag, 'name').text = name
-                XML.SubElement(param_tag, 'value').text = str(
-                    value or False).lower()
+                mapping = [
+                    ('', 'name', name),
+                    ('', 'value', value or False)]
+                convert_mapping_to_xml(param_tag, project_def,
+                    mapping, fail_required=True)
 
 
 def convert_mapping_to_xml(parent, data, mapping, fail_required=False):

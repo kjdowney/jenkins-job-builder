@@ -21,6 +21,7 @@ import re
 from string import Formatter
 
 from jenkins_jobs.errors import JenkinsJobsException
+from jenkins_jobs.local_yaml import CustomLoader
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,10 @@ def deep_format(obj, paramdict, allow_empty=False):
                 raise
     else:
         ret = obj
+    if isinstance(ret, CustomLoader):
+        # If we have a CustomLoader here, we've lazily-loaded a template;
+        # attempt to format it.
+        ret = deep_format(ret, paramdict, allow_empty=allow_empty)
     return ret
 
 
@@ -76,19 +81,25 @@ class CustomFormatter(Formatter):
     Custom formatter to allow non-existing key references when formatting a
     string
     """
-    _expr = '{({{)*(?:obj:)?(?P<key>\w+)(?:\|(?P<default>[\w\s]*))?}(}})*'
+    _expr = """
+        (?<!{){({{)*                # non-pair opening {
+        (?:obj:)?                   # obj:
+        (?P<key>\w+)                # key
+        (?:\|(?P<default>[\w\s]*))? # default fallback
+        }(}})*(?!})                 # non-pair closing }
+    """
 
     def __init__(self, allow_empty=False):
         super(CustomFormatter, self).__init__()
         self.allow_empty = allow_empty
 
     def vformat(self, format_string, args, kwargs):
-        matcher = re.compile(self._expr)
+        matcher = re.compile(self._expr, re.VERBOSE)
 
         # special case of returning the object if the entire string
         # matches a single parameter
         try:
-            result = re.match('^%s$' % self._expr, format_string)
+            result = re.match('^%s$' % self._expr, format_string, re.VERBOSE)
         except TypeError:
             return format_string.format(**kwargs)
         if result is not None:

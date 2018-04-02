@@ -58,7 +58,9 @@ class TestTests(CmdTestsBase):
                 os.path.join(self.fixtures_path,
                              'cmd-001.yaml'),
                 'foo-job']
-        self.execute_jenkins_jobs_with_args(args)
+        console_out = io.BytesIO()
+        with mock.patch('sys.stdout', console_out):
+            self.execute_jenkins_jobs_with_args(args)
 
     def test_console_output(self):
         """
@@ -363,8 +365,8 @@ class TestTestsMultiPath(CmdTestsBase):
     def check_dirs_match(self, expected_dir):
         try:
             self.assertThat(self.output_dir, MatchesDir(expected_dir))
-        except testtools.matchers.MismatchError as e:
-            raise e
+        except testtools.matchers.MismatchError:
+            raise
         else:
             shutil.rmtree(self.output_dir)
 

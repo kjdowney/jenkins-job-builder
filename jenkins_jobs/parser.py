@@ -20,6 +20,7 @@ import fnmatch
 import io
 import itertools
 import logging
+import re
 import os
 
 from jenkins_jobs.constants import MAGIC_MANAGE_STRING
@@ -218,6 +219,12 @@ class YamlParser(object):
             job["description"] = description + \
                 self._get_managed_string().lstrip()
 
+    def _getfullname(self, data):
+        if 'folder' in data:
+            return "%s/%s" % (data['folder'], data['name'])
+
+        return data['name']
+
     def expandYaml(self, registry, jobs_glob=None):
         changed = True
         while changed:
@@ -228,15 +235,18 @@ class YamlParser(object):
                         changed = True
 
         for job in self.data.get('job', {}).values():
+            job = self._applyDefaults(job)
+            job['name'] = self._getfullname(job)
+
             if jobs_glob and not matches(job['name'], jobs_glob):
                 logger.debug("Ignoring job {0}".format(job['name']))
                 continue
             logger.debug("Expanding job '{0}'".format(job['name']))
-            job = self._applyDefaults(job)
             self._formatDescription(job)
             self.jobs.append(job)
 
         for view in self.data.get('view', {}).values():
+            view['name'] = self._getfullname(view)
             logger.debug("Expanding view '{0}'".format(view['name']))
             self._formatDescription(view)
             self.views.append(view)
@@ -338,6 +348,7 @@ class YamlParser(object):
         for values in itertools.product(*dimensions):
             params = copy.deepcopy(project)
             params = self._applyDefaults(params, template)
+            params['template-name'] = re.sub(r'({|})', r'\1\1', template_name)
 
             try:
                 expanded_values = {}
@@ -378,7 +389,6 @@ class YamlParser(object):
                 if key not in params:
                     params[key] = template[key]
 
-            params['template-name'] = template_name
             try:
                 expanded = deep_format(
                     template, params,
@@ -388,6 +398,7 @@ class YamlParser(object):
                     "Failure formatting template '%s', containing '%s' with "
                     "params '%s'", template_name, template, params)
                 raise
+            expanded['name'] = self._getfullname(expanded)
 
             job_name = expanded.get('name')
             if jobs_glob and not matches(job_name, jobs_glob):

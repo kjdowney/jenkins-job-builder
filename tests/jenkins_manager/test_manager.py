@@ -62,9 +62,23 @@ class TestCaseTestJenkinsManager(base.BaseTestCase):
                                  get_jobs=mock.DEFAULT,
                                  is_managed=mock.DEFAULT,
                                  delete_job=mock.DEFAULT) as patches:
-            patches['get_jobs'].return_value = [{'name': 'job1'},
-                                                {'name': 'job2'}]
+            patches['get_jobs'].return_value = [{'fullname': 'job1'},
+                                                {'fullname': 'job2'}]
             patches['is_managed'].side_effect = [True, True]
 
             self.builder.delete_old_managed()
-            self.assertEquals(patches['delete_job'].call_count, 2)
+            self.assertEqual(patches['delete_job'].call_count, 2)
+
+    def _get_plugins_info_error_test(self, error_string):
+        builder = jenkins_jobs.builder.JenkinsManager(self.jjb_config)
+        exception = jenkins_jobs.builder.jenkins.JenkinsException(error_string)
+        with mock.patch.object(builder.jenkins, 'get_plugins',
+                               side_effect=exception):
+            plugins_info = builder.get_plugins_info()
+        self.assertEqual([_plugins_info['plugin1']], plugins_info)
+
+    def test_get_plugins_info_handles_connectionrefused_errors(self):
+        self._get_plugins_info_error_test('Connection refused')
+
+    def test_get_plugins_info_handles_forbidden_errors(self):
+        self._get_plugins_info_error_test('Forbidden')

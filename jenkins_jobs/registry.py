@@ -23,6 +23,7 @@ import types
 
 from jenkins_jobs.errors import JenkinsJobsException
 from jenkins_jobs.formatter import deep_format
+from jenkins_jobs.local_yaml import Jinja2Loader
 
 __all__ = [
     "ModuleRegistry"
@@ -32,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 
 class ModuleRegistry(object):
-    entry_points_cache = {}
+    _entry_points_cache = {}
 
     def __init__(self, jjb_config, plugins_list=None):
         self.modules = []
@@ -64,7 +65,7 @@ class ModuleRegistry(object):
             mapped to its plugin info dictionary.
             """
             version = plugin_info.get('version', '0')
-            plugin_info['version'] = re.sub(r'(.*)-(?:SNAPSHOT|BETA)',
+            plugin_info['version'] = re.sub(r'(.*)-(?:SNAPSHOT|BETA).*',
                                             r'\g<1>.preview', version)
 
             aliases = []
@@ -160,9 +161,10 @@ class ModuleRegistry(object):
         if isinstance(component, dict):
             # The component is a singleton dictionary of name: dict(args)
             name, component_data = next(iter(component.items()))
-            if template_data:
+            if template_data or isinstance(component_data, Jinja2Loader):
                 # Template data contains values that should be interpolated
-                # into the component definition
+                # into the component definition.  To handle Jinja2 templates
+                # that don't contain any variables, we also deep format those.
                 try:
                     component_data = deep_format(
                         component_data, template_data,
@@ -178,7 +180,7 @@ class ModuleRegistry(object):
             component_data = {}
 
         # Look for a component function defined in an entry point
-        eps = ModuleRegistry.entry_points_cache.get(component_list_type)
+        eps = self._entry_points_cache.get(component_list_type)
         if eps is None:
             module_eps = []
             # auto build entry points by inferring from base component_types
@@ -230,7 +232,7 @@ class ModuleRegistry(object):
                 eps[module_ep.name] = module_ep
 
             # cache both sets of entry points
-            ModuleRegistry.entry_points_cache[component_list_type] = eps
+            self._entry_points_cache[component_list_type] = eps
             logger.debug("Cached entry point group %s = %s",
                          component_list_type, eps)
 

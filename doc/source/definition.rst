@@ -8,6 +8,13 @@ YAML file, or a directory.  If you choose a directory, all of
 the .yaml/.yml or .json files in that directory will be read, and all the
 jobs they define will be created or updated.
 
+.. note::
+
+    Jenkins Job Builder 2.x plugins are designed to default to generating the
+    xml format for the latest supported version of JJB. This is a change in
+    behaviour from 1.x and below which defaulted to the oldest supported plugin
+    version.
+
 Definitions
 -----------
 
@@ -322,6 +329,35 @@ always use ``{{`` to achieve a literal ``{``.  A generic builder will need
 to consider the correct quoting based on its use of parameters.
 
 
+.. _folders:
+
+Folders
+^^^^^^^
+
+Jenkins supports organising jobs, views, and slaves using a folder hierarchy.
+This allows for easier separation of access as well credentials and resources
+which can be assigned to only be available for a specific folder.
+
+JJB has two methods of supporting uploading jobs to a specific folder:
+
+* Name the job to contain the desired folder ``<folder>/my-job-name``
+* Use the ``folder`` attribute on a job definition, via a template, or through
+  `Defaults`_.
+
+Supporting both an attributed and use of it directly in job names allows for
+teams to have all jobs using their defaults automatically use a top-level
+folder, while still allowing for them to additionally nest jobs for their
+own preferences.
+
+Job Name Example:
+
+.. literalinclude:: /../../tests/yamlparser/fixtures/folders-job-name.yaml
+
+Folder Attribute Example:
+
+.. literalinclude:: /../../tests/yamlparser/fixtures/folders-attribute.yaml
+
+
 .. _ids:
 
 Item ID's
@@ -400,6 +436,9 @@ You can define variables that will be realized in a `Job Template`.
 .. literalinclude::  /../../tests/yamlparser/fixtures/template_honor_defaults.yaml
 
 Would create jobs ``build-i386`` and ``build-amd64``.
+
+You can also reference a variable ``{template-name}`` in any value and it will
+be subtitued by the name of the current job template being processed.
 
 .. _variable_references:
 
@@ -482,6 +521,7 @@ The bulk of the job definitions come from the following modules.
    :glob:
 
    project_*
+   view_*
    builders
    hipchat
    metadata

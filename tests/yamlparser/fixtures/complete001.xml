@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <project>
   <actions/>
-  <description>&lt;!-- Managed by Jenkins Job Builder --&gt;</description>
+  <description>JJB template: complete001_{version}
+&lt;!-- Managed by Jenkins Job Builder --&gt;</description>
   <keepDependencies>false</keepDependencies>
   <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
   <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
@@ -74,6 +75,7 @@
       <notificationLevel/>
       <dynamicTriggerConfiguration>False</dynamicTriggerConfiguration>
       <triggerConfigURL/>
+      <triggerInformationAction/>
       <allowTriggeringUnreviewedPatches>false</allowTriggeringUnreviewedPatches>
       <triggerOnEvents>
         <com.sonyericsson.hudson.plugins.gerrit.trigger.hudsontrigger.events.PluginPatchsetCreatedEvent/>
@@ -112,12 +114,14 @@ print(&quot;Doing something cool with python&quot;)
   <publishers/>
   <buildWrappers>
     <hudson.plugins.build__timeout.BuildTimeoutWrapper>
-      <timeoutMinutes>3</timeoutMinutes>
-      <failBuild>true</failBuild>
-      <writingDescription>false</writingDescription>
-      <timeoutPercentage>150</timeoutPercentage>
-      <timeoutMinutesElasticDefault>90</timeoutMinutesElasticDefault>
-      <timeoutType>elastic</timeoutType>
+      <strategy class="hudson.plugins.build_timeout.impl.ElasticTimeOutStrategy">
+        <timeoutPercentage>150</timeoutPercentage>
+        <numberOfBuilds>0</numberOfBuilds>
+        <timeoutMinutesElasticDefault>90</timeoutMinutesElasticDefault>
+      </strategy>
+      <operationList>
+        <hudson.plugins.build__timeout.operations.FailOperation/>
+      </operationList>
     </hudson.plugins.build__timeout.BuildTimeoutWrapper>
     <org.jenkinsci.plugins.preSCMbuildstep.PreSCMBuildStepsWrapper>
       <buildSteps>

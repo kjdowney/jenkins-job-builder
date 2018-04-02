@@ -9,6 +9,13 @@
           <width>750</width>
           <height>450</height>
           <csvFileName>myplot.csv</csvFileName>
+          <group>PlotGroup</group>
+          <useDescr>false</useDescr>
+          <exclZero>true</exclZero>
+          <logarithmic>true</logarithmic>
+          <keepRecords>false</keepRecords>
+          <numBuilds/>
+          <style>line</style>
           <series>
             <hudson.plugins.plot.PropertiesSeries>
               <file>graph-me-second.properties</file>
@@ -24,13 +31,6 @@
               <fileType>csv</fileType>
             </hudson.plugins.plot.CSVSeries>
           </series>
-          <group>PlotGroup</group>
-          <useDescr>false</useDescr>
-          <exclZero>true</exclZero>
-          <logarithmic>true</logarithmic>
-          <keepRecords>false</keepRecords>
-          <numBuilds/>
-          <style>line</style>
         </hudson.plugins.plot.Plot>
         <hudson.plugins.plot.Plot>
           <title>MyPlot2</title>
@@ -38,6 +38,13 @@
           <width>750</width>
           <height>450</height>
           <csvFileName>myplot2.csv</csvFileName>
+          <group>PlotGroup</group>
+          <useDescr>false</useDescr>
+          <exclZero>false</exclZero>
+          <logarithmic>false</logarithmic>
+          <keepRecords>false</keepRecords>
+          <numBuilds/>
+          <style>line</style>
           <series>
             <hudson.plugins.plot.XMLSeries>
               <file>graph-me-third.xml</file>
@@ -47,13 +54,6 @@
               <fileType>xml</fileType>
             </hudson.plugins.plot.XMLSeries>
           </series>
-          <group>PlotGroup</group>
-          <useDescr>false</useDescr>
-          <exclZero>false</exclZero>
-          <logarithmic>false</logarithmic>
-          <keepRecords>false</keepRecords>
-          <numBuilds/>
-          <style>line</style>
         </hudson.plugins.plot.Plot>
       </plots>
     </hudson.plugins.plot.PlotPublisher>

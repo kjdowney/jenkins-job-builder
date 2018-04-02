@@ -4,6 +4,7 @@
     <jenkins.plugins.slack.SlackNotifier>
       <teamDomain>teamname</teamDomain>
       <authToken>yourauthtoken</authToken>
+      <authTokenCredentialId>yourauthtokenid</authTokenCredentialId>
       <buildServerUrl>http://localhost:8081</buildServerUrl>
       <room>#builds</room>
       <startNotification>true</startNotification>
@@ -18,6 +19,9 @@
       <commitInfoChoice>AUTHORS_AND_TITLES</commitInfoChoice>
       <includeCustomMessage>true</includeCustomMessage>
       <customMessage>A custom message.</customMessage>
+      <authTokenCredentialId>yourauthtoken</authTokenCredentialId>
+      <botUser>true</botUser>
+      <baseUrl>https://hooks.slack.com/services/</baseUrl>
     </jenkins.plugins.slack.SlackNotifier>
   </publishers>
 </project>

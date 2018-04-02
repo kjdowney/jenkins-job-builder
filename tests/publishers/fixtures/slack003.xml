@@ -4,6 +4,7 @@
     <jenkins.plugins.slack.SlackNotifier>
       <teamDomain/>
       <authToken/>
+      <authTokenCredentialId/>
       <buildServerUrl>/</buildServerUrl>
       <room/>
       <startNotification>false</startNotification>
@@ -18,6 +19,9 @@
       <commitInfoChoice>NONE</commitInfoChoice>
       <includeCustomMessage>false</includeCustomMessage>
       <customMessage/>
+      <authTokenCredentialId/>
+      <botUser>false</botUser>
+      <baseUrl/>
     </jenkins.plugins.slack.SlackNotifier>
   </publishers>
 </project>

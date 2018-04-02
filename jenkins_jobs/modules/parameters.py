@@ -309,9 +309,9 @@ def credentials_param(registry, xml_parent, data):
 
     Example::
 
-    .. literalinclude:: \
-       /../../tests/parameters/fixtures/credentials-param001.yaml
-       :language: yaml
+        .. literalinclude::
+            /../../tests/parameters/fixtures/credentials-param001.yaml
+           :language: yaml
 
     """
     cred_impl_types = {
@@ -357,7 +357,8 @@ def run_param(registry, xml_parent, data):
     """
     pdef = base_param(registry, xml_parent, data, False,
                       'hudson.model.RunParameterDefinition')
-    XML.SubElement(pdef, 'projectName').text = data['project-name']
+    mapping = [('project-name', 'projectName', None)]
+    convert_mapping_to_xml(pdef, data, mapping, fail_required=True)
 
 
 def extended_choice_param(registry, xml_parent, data):
@@ -393,31 +394,29 @@ def extended_choice_param(registry, xml_parent, data):
     :arg str description-property-key: key for the value description
         property file (optional, default '')
     :arg str multi-select-delimiter: value between selections when the
-        parameter is a multi-select (optiona, default ',')
+        parameter is a multi-select (optional, default ',')
+    :arg str groovy-script: the groovy script contents (optional, default ',')
+    :arg str classpath: the classpath for the groovy script
+        (optional, default ',')
 
-    Example:
 
-    .. literalinclude:: \
-    /../../tests/parameters/fixtures/extended-choice-param001.yaml
-       :language: yaml
+    Minimal Example:
 
+        .. literalinclude:: \
+        /../../tests/parameters/fixtures/extended-choice-param-minimal.yaml
+           :language: yaml
+
+    Full Example:
+
+        .. literalinclude:: \
+        /../../tests/parameters/fixtures/extended-choice-param-full.yaml
+           :language: yaml
     """
     pdef = base_param(registry, xml_parent, data, False,
                       'com.cwctravel.hudson.plugins.'
                       'extended__choice__parameter.'
                       'ExtendedChoiceParameterDefinition')
-    XML.SubElement(pdef, 'value').text = data.get('value', '')
-    XML.SubElement(pdef, 'visibleItemCount').text = str(data.get(
-        'visible-items', data.get('visible-item-count', 5)))
-    XML.SubElement(pdef, 'multiSelectDelimiter').text = data.get(
-        'multi-select-delimiter', ',')
-    XML.SubElement(pdef, 'quoteValue').text = str(data.get('quote-value',
-                                                  False)).lower()
-    XML.SubElement(pdef, 'defaultValue').text = data.get(
-        'default-value', '')
-    XML.SubElement(pdef, 'descriptionPropertyValue').text = data.get(
-        'value-description', '')
-    choice = data.get('type', 'single-select')
+
     choicedict = {'single-select': 'PT_SINGLE_SELECT',
                   'multi-select': 'PT_MULTI_SELECT',
                   'radio': 'PT_RADIO',
@@ -428,23 +427,24 @@ def extended_choice_param(registry, xml_parent, data):
                   'PT_RADIO': 'PT_RADIO',
                   'PT_CHECKBOX': 'PT_CHECKBOX',
                   'PT_TEXTBOX': 'PT_TEXTBOX'}
-
-    if choice in choicedict:
-        XML.SubElement(pdef, 'type').text = choicedict[choice]
-    else:
-        raise JenkinsJobsException("Type entered is not valid, must be one "
-                                   "of: single-select, multi-select, radio, "
-                                   "textbox or checkbox")
-    XML.SubElement(pdef, 'propertyFile').text = data.get('property-file', '')
-    XML.SubElement(pdef, 'propertyKey').text = data.get('property-key', '')
-    XML.SubElement(pdef, 'defaultPropertyFile').text = data.get(
-        'default-property-file', '')
-    XML.SubElement(pdef, 'defaultPropertyKey').text = data.get(
-        'default-property-key', '')
-    XML.SubElement(pdef, 'descriptionPropertyFile').text = data.get(
-        'description-property-file', '')
-    XML.SubElement(pdef, 'descriptionPropertyKey').text = data.get(
-        'description-property-key', '')
+    mapping = [
+        ('value', 'value', ''),
+        ('visible-items', 'visibleItemCount', 5),
+        ('multi-select-delimiter', 'multiSelectDelimiter', ','),
+        ('quote-value', 'quoteValue', False),
+        ('default-value', 'defaultValue', ''),
+        ('value-description', 'descriptionPropertyValue', ''),
+        ('type', 'type', 'single-select', choicedict),
+        ('property-file', 'propertyFile', ''),
+        ('property-key', 'propertyKey', ''),
+        ('default-property-file', 'defaultPropertyFile', ''),
+        ('default-property-key', 'defaultPropertyKey', ''),
+        ('description-property-file', 'descriptionPropertyFile', ''),
+        ('description-property-key', 'descriptionPropertyKey', ''),
+        ('groovy-script', 'groovyScript', ''),
+        ('classpath', 'groovyClasspath', ''),
+    ]
+    convert_mapping_to_xml(pdef, data, mapping, fail_required=True)
 
 
 def validating_string_param(registry, xml_parent, data):
@@ -472,8 +472,11 @@ def validating_string_param(registry, xml_parent, data):
     pdef = base_param(registry, xml_parent, data, True,
                       'hudson.plugins.validating__string__parameter.'
                       'ValidatingStringParameterDefinition')
-    XML.SubElement(pdef, 'regex').text = data['regex']
-    XML.SubElement(pdef, 'failedValidationMessage').text = data['msg']
+    mapping = [
+        ('regex', 'regex', None),
+        ('msg', 'failedValidationMessage', None),
+    ]
+    convert_mapping_to_xml(pdef, data, mapping, fail_required=True)
 
 
 def svn_tags_param(registry, xml_parent, data):
@@ -483,10 +486,16 @@ def svn_tags_param(registry, xml_parent, data):
     <Parameterized+Trigger+Plugin>`.
 
     :arg str name: the name of the parameter
-    :arg str default: the default value of the parameter (optional)
-    :arg str description: a description of the parameter (optional)
     :arg str url: the url to list tags from
-    :arg str filter: the regular expression to filter tags
+    :arg str credentials-id: Credentials ID to use for authentication
+        (default '')
+    :arg str filter: the regular expression to filter tags (default '')
+    :arg str default: the default value of the parameter (default '')
+    :arg str description: a description of the parameter (default '')
+    :arg int max-tags: the number of tags to display (default '100')
+    :arg bool sort-newest-first: sort tags from newest to oldest (default true)
+    :arg bool sort-z-to-a: sort tags in reverse alphabetical order
+        (default false)
 
     Example::
 
@@ -501,12 +510,16 @@ def svn_tags_param(registry, xml_parent, data):
     pdef = base_param(registry, xml_parent, data, True,
                       'hudson.scm.listtagsparameter.'
                       'ListSubversionTagsParameterDefinition')
-    XML.SubElement(pdef, 'tagsDir').text = data['url']
-    XML.SubElement(pdef, 'tagsFilter').text = data.get('filter', None)
-    XML.SubElement(pdef, 'reverseByDate').text = "true"
-    XML.SubElement(pdef, 'reverseByName').text = "false"
-    XML.SubElement(pdef, 'maxTags').text = "100"
-    XML.SubElement(pdef, 'uuid').text = "1-1-1-1-1"
+    mapping = [
+        ('url', 'tagsDir', None),
+        ('credentials-id', 'credentialsId', ''),
+        ('filter', 'tagsFilter', ''),
+        ('max-tags', 'maxTags', '100'),
+        ('sort-newest-first', 'reverseByDate', True),
+        ('sort-z-to-a', 'reverseByName', False),
+        ('', 'uuid', "1-1-1-1-1"),
+    ]
+    convert_mapping_to_xml(pdef, data, mapping, fail_required=True)
 
 
 def dynamic_choice_param(registry, xml_parent, data):
@@ -666,23 +679,27 @@ def dynamic_scriptler_param_common(registry, xml_parent, data, ptype):
     pdef = base_param(registry, xml_parent, data, False,
                       'com.seitenbau.jenkins.plugins.dynamicparameter.'
                       'scriptler.' + ptype)
-    XML.SubElement(pdef, '__remote').text = str(
-        data.get('remote', False)).lower()
-    XML.SubElement(pdef, '__scriptlerScriptId').text = data.get(
-        'script-id', None)
     parametersXML = XML.SubElement(pdef, '__parameters')
     parameters = data.get('parameters', [])
     if parameters:
+        mapping = [
+            ('name', 'name', None),
+            ('value', 'value', None),
+        ]
         for parameter in parameters:
             parameterXML = XML.SubElement(parametersXML,
                                           'com.seitenbau.jenkins.plugins.'
                                           'dynamicparameter.scriptler.'
                                           'ScriptlerParameterDefinition_'
                                           '-ScriptParameter')
-            XML.SubElement(parameterXML, 'name').text = parameter['name']
-            XML.SubElement(parameterXML, 'value').text = parameter['value']
-    XML.SubElement(pdef, 'readonlyInputField').text = str(data.get(
-        'read-only', False)).lower()
+            convert_mapping_to_xml(
+                parameterXML, parameter, mapping, fail_required=True)
+    mapping = [
+        ('script-id', '__scriptlerScriptId', None),
+        ('remote', '__remote', False),
+        ('read-only', 'readonlyInputField', False),
+    ]
+    convert_mapping_to_xml(pdef, data, mapping, fail_required=True)
 
 
 def matrix_combinations_param(registry, xml_parent, data):
@@ -706,15 +723,12 @@ def matrix_combinations_param(registry, xml_parent, data):
     element_name = 'hudson.plugins.matrix__configuration__parameter.' \
                    'MatrixCombinationsParameterDefinition'
     pdef = XML.SubElement(xml_parent, element_name)
-    if 'name' not in data:
-        raise JenkinsJobsException('matrix-combinations must have a name '
-                                   'parameter.')
-    XML.SubElement(pdef, 'name').text = data['name']
-    XML.SubElement(pdef, 'description').text = data.get('description', '')
-    combination_filter = data.get('filter')
-    if combination_filter:
-        XML.SubElement(pdef, 'defaultCombinationFilter').text = \
-            combination_filter
+
+    mapping = [
+        ('name', 'name', None),
+        ('description', 'description', ''),
+        ('filter', 'defaultCombinationFilter', '')]
+    convert_mapping_to_xml(pdef, data, mapping, fail_required=True)
 
     return pdef
 
@@ -743,13 +757,11 @@ def copyartifact_build_selector_param(registry, xml_parent, data):
 
     t = XML.SubElement(xml_parent, 'hudson.plugins.copyartifact.'
                        'BuildSelectorParameter')
-    try:
-        name = data['name']
-    except KeyError:
-        raise MissingAttributeError('name')
-
-    XML.SubElement(t, 'name').text = name
-    XML.SubElement(t, 'description').text = data.get('description', '')
+    mapping = [
+        ('name', 'name', None),
+        ('description', 'description', ''),
+    ]
+    convert_mapping_to_xml(t, data, mapping, fail_required=True)
 
     copyartifact_build_selector(t, data, 'defaultSelector')
 
@@ -795,14 +807,15 @@ def maven_metadata_param(registry, xml_parent, data):
     pdef = base_param(registry, xml_parent, data, False,
                       'eu.markov.jenkins.plugin.mvnmeta.'
                       'MavenMetadataParameterDefinition')
-    XML.SubElement(pdef, 'repoBaseUrl').text = data.get('repository-base-url',
-                                                        '')
-    XML.SubElement(pdef, 'groupId').text = data.get('artifact-group-id', '')
-    XML.SubElement(pdef, 'artifactId').text = data.get('artifact-id', '')
-    XML.SubElement(pdef, 'packaging').text = data.get('packaging', '')
-    XML.SubElement(pdef, 'defaultValue').text = data.get('default-value', '')
-    XML.SubElement(pdef, 'versionFilter').text = data.get('versions-filter',
-                                                          '')
+    mapping = [
+        ('repository-base-url', 'repoBaseUrl', ''),
+        ('artifact-group-id', 'groupId', ''),
+        ('artifact-id', 'artifactId', ''),
+        ('packaging', 'packaging', ''),
+        ('default-value', 'defaultValue', ''),
+        ('versions-filter', 'versionFilter', ''),
+    ]
+    convert_mapping_to_xml(pdef, data, mapping, fail_required=True)
 
     sort_order = data.get('sorting-order', 'descending').lower()
     sort_dict = {'descending': 'DESC',
@@ -812,10 +825,12 @@ def maven_metadata_param(registry, xml_parent, data):
         raise InvalidAttributeError(sort_order, sort_order, sort_dict.keys())
 
     XML.SubElement(pdef, 'sortOrder').text = sort_dict[sort_order]
-    XML.SubElement(pdef, 'maxVersions').text = str(data.get(
-        'maximum-versions-to-display', 10))
-    XML.SubElement(pdef, 'username').text = data.get('repository-username', '')
-    XML.SubElement(pdef, 'password').text = data.get('repository-password', '')
+    mapping = [
+        ('maximum-versions-to-display', 'maxVersions', 10),
+        ('repository-username', 'username', ''),
+        ('repository-password', 'password', ''),
+    ]
+    convert_mapping_to_xml(pdef, data, mapping, fail_required=True)
 
 
 def hidden_param(parser, xml_parent, data):
@@ -867,6 +882,112 @@ def random_string_param(registry, xml_parent, data):
         ('name', 'name', None),
         ('description', 'description', ''),
         ('failed-validation-message', 'failedValidationMessage', ''),
+    ]
+    convert_mapping_to_xml(pdef, data, mapping, fail_required=True)
+
+
+def git_parameter_param(registry, xml_parent, data):
+    """yaml: git-parameter
+    This parameter allows to select a git tag, branch or revision number as
+    parameter in Parametrized builds.
+    Requires the Jenkins :jenkins-wiki:`Git Parameter Plugin
+    <Git+Parameter+Plugin>`.
+
+    :arg str name: Name of the parameter
+    :arg str description: Description of the parameter (default '')
+    :arg str type: The type of the list of parameters (default 'PT_TAG')
+
+        :Allowed Values: * **PT_TAG** list of all commit tags in repository -
+                        returns Tag Name
+                    * **PT_BRANCH** list of all branches in repository -
+                        returns Branch Name
+                    * **PT_BRANCH_TAG** list of all commit tags and all
+                        branches in repository - returns Tag Name or Branch
+                        Name
+                    * **PT_REVISION** list of all revision sha1 in repository
+                        followed by its author and date - returns Tag SHA1
+                    * **PT_PULL_REQUEST**
+
+    :arg str branch: Name of branch to look in. Used only if listing
+        revisions.  (default '')
+    :arg str branchFilter: Regex used to filter displayed branches. If blank,
+        the filter will default to ".*". Remote branches will be listed with
+        the remote name first. E.g., "origin/master"  (default '.*')
+    :arg str tagFilter: Regex used to filter displayed branches. If blank, the
+        filter will default to ".*". Remote branches will be listed with the
+        remote name first. E.g., "origin/master"  (default '*')
+    :arg str sortMode: Mode of sorting.  (default 'NONE')
+
+        :Allowed Values: * **NONE**
+                    * **DESCENDING**
+                    * **ASCENDING**
+                    * **ASCENDING_SMART**
+                    * **DESCENDING_SMART**
+
+    :arg str defaultValue: This value is returned when list is empty. (default
+        '')
+    :arg str selectedValue: Which value is selected, after loaded parameters.
+        If you choose 'default', but default value is not present on the list,
+        nothing is selected. (default 'NONE')
+
+        :Allowed Values: * **NONE**
+                    * **TOP**
+                    * **DEFAULT**
+
+    :arg str useRepository: If in the task is defined multiple repositories
+        parameter specifies which the repository is taken into account. If the
+        parameter is not defined, is taken first defined repository. The
+        parameter is a regular expression which is compared with a URL
+        repository. (default '')
+    :arg bool quickFilterEnabled: When this option is enabled will show a text
+        field. Parameter is filtered on the fly. (default false)
+
+    Minimal Example:
+
+    .. literalinclude::
+       /../../tests/parameters/fixtures/git-parameter-param-minimal.yaml
+       :language: yaml
+
+    Full Example:
+
+    .. literalinclude::
+       /../../tests/parameters/fixtures/git-parameter-param-full.yaml
+       :language: yaml
+    """
+    pdef = XML.SubElement(xml_parent,
+                          'net.uaznia.lukanus.hudson.plugins.gitparameter.'
+                          'GitParameterDefinition')
+
+    valid_types = [
+        'PT_TAG',
+        'PT_BRANCH',
+        'PT_BRANCH_TAG',
+        'PT_REVISION',
+        'PT_PULL_REQUEST',
+    ]
+
+    valid_sort_modes = [
+        'NONE',
+        'ASCENDING',
+        'ASCENDING_SMART',
+        'DESCENDING',
+        'DESCENDING_SMART',
+    ]
+
+    valid_selected_values = ['NONE', 'TOP', 'DEFAULT']
+
+    mapping = [
+        ('name', 'name', None),
+        ('description', 'description', ''),
+        ('type', 'type', 'PT_TAG', valid_types),
+        ('branch', 'branch', ''),
+        ('tagFilter', 'tagFilter', '*'),
+        ('branchFilter', 'branchFilter', '.*'),
+        ('sortMode', 'sortMode', 'NONE', valid_sort_modes),
+        ('defaultValue', 'defaultValue', ''),
+        ('selectedValue', 'selectedValue', 'NONE', valid_selected_values),
+        ('useRepository', 'useRepository', ''),
+        ('quickFilterEnabled', 'quickFilterEnabled', False),
     ]
     convert_mapping_to_xml(pdef, data, mapping, fail_required=True)
 
