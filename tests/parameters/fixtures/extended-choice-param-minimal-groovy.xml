@@ -20,7 +20,12 @@
           <descriptionPropertyFile/>
           <descriptionPropertyKey/>
           <groovyScript>return 'value1, value2, value3'</groovyScript>
+          <groovyScriptFile/>
           <groovyClasspath/>
+          <defaultGroovyScript/>
+          <defaultGroovyClasspath/>
+          <descriptionGroovyScript/>
+          <descriptionGroovyClasspath/>
         </com.cwctravel.hudson.plugins.extended__choice__parameter.ExtendedChoiceParameterDefinition>
       </parameterDefinitions>
     </hudson.model.ParametersDefinitionProperty>

@@ -17,7 +17,6 @@ import io
 import os
 import logging
 import platform
-import sys
 
 from stevedore import extension
 import yaml
@@ -141,6 +140,19 @@ class JenkinsJobs(object):
 
 
 def main():
+
+    # utf-8 workaround for avoiding unicode errors in stdout/stderr
+    # see https://stackoverflow.com/a/2001767/99834
+    import sys
+
+    if sys.version_info[0] == 2:
+        import codecs
+        reload(sys)  # noqa
+        sys.setdefaultencoding('utf-8')
+        sys.stdout = codecs.getwriter('utf8')(sys.stdout)
+        sys.stderr = codecs.getwriter('utf8')(sys.stderr)
+        # end of workaround
+
     argv = sys.argv[1:]
     jjb = JenkinsJobs(argv)
     jjb.execute()

@@ -42,7 +42,7 @@ import xml.etree.ElementTree as XML
 from jenkins_jobs.errors import InvalidAttributeError
 from jenkins_jobs.errors import JenkinsJobsException
 import jenkins_jobs.modules.base
-from jenkins_jobs.modules.helpers import convert_mapping_to_xml
+import jenkins_jobs.modules.helpers as helpers
 
 
 def git(registry, xml_parent, data):
@@ -71,7 +71,7 @@ def git(registry, xml_parent, data):
     :arg list(str) branches: list of branch specifiers to build (default '**')
     :arg bool skip-tag: Skip tagging (default true)
 
-        .. deprecated:: 1.6.0. Please use per-build-tag extension, which has
+        .. deprecated:: 2.0.0. Please use per-build-tag extension, which has
            the inverse meaning.
 
     :arg bool clean: Clean after checkout (default false)
@@ -169,6 +169,7 @@ def git(registry, xml_parent, data):
         * **scm-name** (`string`) - The unique scm name for this Git SCM
             (optional)
         * **shallow-clone** (`bool`) - Perform shallow clone (default false)
+        * **depth** (`int`) - Set shallow clone depth (default 1)
         * **do-not-fetch-tags** (`bool`) - Perform a clone without tags
             (default false)
         * **sparse-checkout** (`dict`)
@@ -248,8 +249,8 @@ def git(registry, xml_parent, data):
         if 'url' in remoteParams:
             remoteURL = remoteParams['url']
         else:
-            raise JenkinsJobsException('Must specify a url for git remote \"' +
-                                       remoteName + '"')
+            raise JenkinsJobsException(
+                'Must specify a url for git remote \"' + remoteName + '"')
         XML.SubElement(huser, 'url').text = remoteURL
         if 'credentials-id' in remoteParams:
             credentialsId = remoteParams['credentials-id']
@@ -381,8 +382,12 @@ def git(registry, xml_parent, data):
     )
     if any(key in data for key in clone_options):
         clo = XML.SubElement(exts_node, impl_prefix + 'CloneOption')
-        XML.SubElement(clo, 'shallow').text = str(
-            data.get('shallow-clone', False)).lower()
+        clone_mapping = [
+            ('shallow-clone', 'shallow', False),
+            ('depth', 'depth', 1),
+        ]
+        helpers.convert_mapping_to_xml(
+            clo, data, clone_mapping, fail_required=True)
         if 'do-not-fetch-tags' in data:
             XML.SubElement(clo, 'noTags').text = str(
                 data.get('do-not-fetch-tags', False)).lower()
@@ -429,7 +434,7 @@ def git(registry, xml_parent, data):
         # The default value of per-build-tag is False if skip-tag is not set,
         # so we set the default value of skip-tag to True.
         per_build_tag_default = False
-        if str(data.get('skip-tag', True)).lower == 'false':
+        if str(data.get('skip-tag', True)).lower() == 'false':
             per_build_tag_default = True
         if str(data.get('per-build-tag',
                         per_build_tag_default)).lower() == 'true':
@@ -451,25 +456,27 @@ def git(registry, xml_parent, data):
         XML.SubElement(exts_node, impl_prefix + 'AuthorInChangelog')
 
     browser = data.get('browser', 'auto')
-    browserdict = {'auto': 'auto',
-                   'assemblaweb': 'AssemblaWeb',
-                   'bitbucketweb': 'BitbucketWeb',
-                   'cgit': 'CGit',
-                   'fisheye': 'FisheyeGitRepositoryBrowser',
-                   'gitblit': 'GitBlitRepositoryBrowser',
-                   'githubweb': 'GithubWeb',
-                   'gitiles': 'Gitiles',
-                   'gitlab': 'GitLab',
-                   'gitlist': 'GitList',
-                   'gitoriousweb': 'GitoriousWeb',
-                   'gitweb': 'GitWeb',
-                   'kiln': 'KilnGit',
-                   'microsoft-tfs-2013': 'TFS2013GitRepositoryBrowser',
-                   'phabricator': 'Phabricator',
-                   'redmineweb': 'RedmineWeb',
-                   'rhodecode': 'RhodeCode',
-                   'stash': 'Stash',
-                   'viewgit': 'ViewGitWeb'}
+    browserdict = {
+        'auto': 'auto',
+        'assemblaweb': 'AssemblaWeb',
+        'bitbucketweb': 'BitbucketWeb',
+        'cgit': 'CGit',
+        'fisheye': 'FisheyeGitRepositoryBrowser',
+        'gitblit': 'GitBlitRepositoryBrowser',
+        'githubweb': 'GithubWeb',
+        'gitiles': 'Gitiles',
+        'gitlab': 'GitLab',
+        'gitlist': 'GitList',
+        'gitoriousweb': 'GitoriousWeb',
+        'gitweb': 'GitWeb',
+        'kiln': 'KilnGit',
+        'microsoft-tfs-2013': 'TFS2013GitRepositoryBrowser',
+        'phabricator': 'Phabricator',
+        'redmineweb': 'RedmineWeb',
+        'rhodecode': 'RhodeCode',
+        'stash': 'Stash',
+        'viewgit': 'ViewGitWeb',
+    }
     if browser not in browserdict:
         valid = sorted(browserdict.keys())
         raise JenkinsJobsException("Browser entered is not valid must be one "
@@ -563,9 +570,11 @@ def cvs(registry, xml_parent, data):
         repo_tag = XML.SubElement(repos_tag, prefix + 'CvsRepository')
 
         compression_level = repo.get('compression-level', '-1')
-        repo_mapping = [('root', 'cvsRoot', None),
-            ('', 'compressionLevel', int(compression_level), range(-1, 10))]
-        convert_mapping_to_xml(repo_tag,
+        repo_mapping = [
+            ('root', 'cvsRoot', None),
+            ('', 'compressionLevel', int(compression_level), range(-1, 10)),
+        ]
+        helpers.convert_mapping_to_xml(repo_tag,
             repo, repo_mapping, fail_required=True)
 
         items_tag = XML.SubElement(repo_tag, 'repositoryItems')
@@ -579,15 +588,18 @@ def cvs(registry, xml_parent, data):
                          'Location').format(prefix, valid_loc_types[loc_type])
             loc_tag = XML.SubElement(item_tag, 'location',
                                      {'class': loc_class})
-            mapping = [('type', 'locationType', 'HEAD')]
-            convert_mapping_to_xml(
+            mapping = [
+                ('type', 'locationType', 'HEAD'),
+            ]
+            helpers.convert_mapping_to_xml(
                 loc_tag, location, mapping, fail_required=True)
 
             if loc_type != 'HEAD':
                 mapping = [
                     ('name', 'locationName', ''),
-                    ('use-head', 'useHeadIfNotFound', False)]
-                convert_mapping_to_xml(
+                    ('use-head', 'useHeadIfNotFound', False),
+                ]
+                helpers.convert_mapping_to_xml(
                     loc_tag, location, mapping, fail_required=True)
 
             modules = location.get('modules')
@@ -596,8 +608,9 @@ def cvs(registry, xml_parent, data):
                 module_tag = XML.SubElement(modules_tag, prefix + 'CvsModule')
                 mapping = [
                     ('remote', 'remoteName', None),
-                    ('local-name', 'localName', '')]
-                convert_mapping_to_xml(
+                    ('local-name', 'localName', ''),
+                ]
+                helpers.convert_mapping_to_xml(
                     module_tag, module, mapping, fail_required=True)
 
         excluded = repo.get('excluded-regions', [])
@@ -613,8 +626,9 @@ def cvs(registry, xml_parent, data):
         ('skip-changelog', 'skipChangeLog', False),
         ('show-all-output', 'disableCvsQuiet', False),
         ('clean-checkout', 'cleanOnFailedUpdate', False),
-        ('clean-copy', 'forceCleanCopy', False)]
-    convert_mapping_to_xml(cvs, data, mappings, fail_required=True)
+        ('clean-copy', 'forceCleanCopy', False),
+    ]
+    helpers.convert_mapping_to_xml(cvs, data, mappings, fail_required=True)
 
 
 def repo(registry, xml_parent, data):
@@ -677,7 +691,7 @@ def repo(registry, xml_parent, data):
         ('trace', 'trace', False),
         ('show-all-changes', 'showAllChanges', False),
     ]
-    convert_mapping_to_xml(scm, data, mapping, fail_required=True)
+    helpers.convert_mapping_to_xml(scm, data, mapping, fail_required=True)
 
     optional_mapping = [
         # option, xml name, default value
@@ -689,7 +703,8 @@ def repo(registry, xml_parent, data):
         ('mirror-dir', 'mirrorDir', None),
         ('local-manifest', 'localManifest', None),
     ]
-    convert_mapping_to_xml(scm, data, optional_mapping, fail_required=False)
+    helpers.convert_mapping_to_xml(
+        scm, data, optional_mapping, fail_required=False)
 
     # ignore-projects does not follow the same pattern of the other parameters,
     # so process it here:
@@ -727,8 +742,9 @@ def store(registry, xml_parent, data):
                          {'class': '{0}.StoreSCM'.format(namespace)})
     mapping = [
         ('script', 'scriptName', None),
-        ('repository', 'repositoryName', None)]
-    convert_mapping_to_xml(scm, data, mapping, fail_required=True)
+        ('repository', 'repositoryName', None),
+    ]
+    helpers.convert_mapping_to_xml(scm, data, mapping, fail_required=True)
 
     pundle_specs = data.get('pundles', [])
     if not pundle_specs:
@@ -742,16 +758,19 @@ def store(registry, xml_parent, data):
         pundle_name = pundle_spec[pundle_type]
         mapping = [
             ('', 'name', pundle_name),
-            ('', 'pundleType', pundle_type.upper(), valid_pundle_types)]
-        convert_mapping_to_xml(pundle, data, mapping, fail_required=True)
+            ('', 'pundleType', pundle_type.upper(), valid_pundle_types),
+        ]
+        helpers.convert_mapping_to_xml(
+            pundle, data, mapping, fail_required=True)
 
-    generate_parcel = True if 'parcel-builder-file' else False
+    generate_parcel = 'parcel-builder-file' in data
     mapping_optional = [
         ('version-regex', 'versionRegex', None),
         ('minimum-blessing', 'minimumBlessingLevel', None),
         ('', 'generateParcelBuilderInputFile', generate_parcel),
-        ('parcel-builder-file', 'parcelBuilderInputFilename', None)]
-    convert_mapping_to_xml(scm,
+        ('parcel-builder-file', 'parcelBuilderInputFilename', None),
+    ]
+    helpers.convert_mapping_to_xml(scm,
         data, mapping_optional, fail_required=False)
 
 
@@ -821,8 +840,11 @@ def svn(registry, xml_parent, data):
     if 'viewvc-url' in data:
         browser = XML.SubElement(
             scm, 'browser', {'class': 'hudson.scm.browsers.ViewSVN'})
-        mapping = [('viewvc-url', 'url', None)]
-        convert_mapping_to_xml(browser, data, mapping, fail_required=True)
+        mapping = [
+            ('viewvc-url', 'url', None),
+        ]
+        helpers.convert_mapping_to_xml(
+            browser, data, mapping, fail_required=True)
     locations = XML.SubElement(scm, 'locations')
 
     def populate_repo_xml(parent, data):
@@ -830,15 +852,18 @@ def svn(registry, xml_parent, data):
                                 'hudson.scm.SubversionSCM_-ModuleLocation')
         mapping = [
             ('url', 'remote', None),
-            ('basedir', 'local', '.')]
-        convert_mapping_to_xml(module, data, mapping, fail_required=True)
+            ('basedir', 'local', '.'),
+        ]
+        helpers.convert_mapping_to_xml(
+            module, data, mapping, fail_required=True)
 
         repo_depths = ['infinity', 'empty', 'files', 'immediates', 'unknown']
         mapping_optional = [
             ('credentials-id', 'credentialsId', None),
             ('repo-depth', 'depthOption', 'infinity', repo_depths),
-            ('ignore-externals', 'ignoreExternalsOption', False)]
-        convert_mapping_to_xml(module, data,
+            ('ignore-externals', 'ignoreExternalsOption', False),
+        ]
+        helpers.convert_mapping_to_xml(module, data,
             mapping_optional, fail_required=False)
 
     if 'repos' in data:
@@ -987,7 +1012,7 @@ def tfs(registry, xml_parent, data):
         ('login', 'userName', ''),
         ('use-update', 'useUpdate', True),
     ]
-    convert_mapping_to_xml(tfs, data, mapping, fail_required=True)
+    helpers.convert_mapping_to_xml(tfs, data, mapping, fail_required=True)
 
     store = data.get('web-access', None)
     if isinstance(store, list):
@@ -1031,8 +1056,10 @@ def workspace(registry, xml_parent, data):
 
     mapping = [
         ('parent-job', 'parentJobName', ''),
-        ('', 'criteria', criteria, criteria_list)]
-    convert_mapping_to_xml(workspace, data, mapping, fail_required=True)
+        ('', 'criteria', criteria, criteria_list),
+    ]
+    helpers.convert_mapping_to_xml(
+        workspace, data, mapping, fail_required=True)
 
 
 def hg(self, xml_parent, data):
@@ -1094,16 +1121,20 @@ def hg(self, xml_parent, data):
 
     scm = XML.SubElement(xml_parent, 'scm', {'class':
                          'hudson.plugins.mercurial.MercurialSCM'})
-    mapping = [('url', 'source', None)]
-    convert_mapping_to_xml(scm, data, mapping, fail_required=True)
+    mapping = [
+        ('url', 'source', None),
+    ]
+    helpers.convert_mapping_to_xml(scm, data, mapping, fail_required=True)
 
     mapping_optional = [
         ('credentials-id', 'credentialsId', None),
         ('revision-type', 'revisionType', 'branch', revision_type_dict),
         ('revision', 'revision', 'default'),
         ('subdir', 'subdir', None),
-        ('clean', 'clean', False)]
-    convert_mapping_to_xml(scm, data, mapping_optional, fail_required=False)
+        ('clean', 'clean', False),
+    ]
+    helpers.convert_mapping_to_xml(
+        scm, data, mapping_optional, fail_required=False)
 
     modules = data.get('modules', '')
     if isinstance(modules, list):
@@ -1116,8 +1147,10 @@ def hg(self, xml_parent, data):
         bc = XML.SubElement(scm, 'browser',
                             {'class': 'hudson.plugins.mercurial.browser.' +
                                       browserdict[browser]})
-        mapping = [('browser-url', 'url', None, browserdict[browser])]
-        convert_mapping_to_xml(bc, data, mapping, fail_required=True)
+        mapping = [
+            ('browser-url', 'url', None, browserdict[browser]),
+        ]
+        helpers.convert_mapping_to_xml(bc, data, mapping, fail_required=True)
 
 
 def openshift_img_streams(registry, xml_parent, data):
@@ -1172,7 +1205,7 @@ def openshift_img_streams(registry, xml_parent, data):
         ("auth-token", 'authToken', ''),
         ("verbose", 'verbose', False),
     ]
-    convert_mapping_to_xml(scm, data, mapping, fail_required=True)
+    helpers.convert_mapping_to_xml(scm, data, mapping, fail_required=True)
 
 
 def bzr(registry, xml_parent, data):
@@ -1211,7 +1244,8 @@ def bzr(registry, xml_parent, data):
     ]
     scm_element = XML.SubElement(
         xml_parent, 'scm', {'class': 'hudson.plugins.bazaar.BazaarSCM'})
-    convert_mapping_to_xml(scm_element, data, mapping, fail_required=True)
+    helpers.convert_mapping_to_xml(
+        scm_element, data, mapping, fail_required=True)
 
     browser_name_to_class = {
         'loggerhead': 'Loggerhead',
@@ -1228,12 +1262,17 @@ def bzr(registry, xml_parent, data):
         'browser',
         {'class': 'hudson.plugins.bazaar.browsers.{0}'.format(
             browser_name_to_class[browser])})
-    mapping = [('browser-url', 'url', None)]
-    convert_mapping_to_xml(browser_element, data, mapping, fail_required=True)
+    mapping = [
+        ('browser-url', 'url', None),
+    ]
+    helpers.convert_mapping_to_xml(
+        browser_element, data, mapping, fail_required=True)
 
     if browser == 'opengrok':
-        mapping = [('opengrok-root-module', 'rootModule', None)]
-        convert_mapping_to_xml(browser_element,
+        mapping = [
+            ('opengrok-root-module', 'rootModule', None),
+        ]
+        helpers.convert_mapping_to_xml(browser_element,
             data, mapping, fail_required=True)
 
 
@@ -1261,10 +1300,15 @@ def url(registry, xml_parent, data):
     for data_url in data['url-list']:
         url_tuple = XML.SubElement(
             urls, 'hudson.plugins.URLSCM.URLSCM_-URLTuple')
-        mapping = [('', 'urlString', data_url)]
-        convert_mapping_to_xml(url_tuple, data, mapping, fail_required=True)
-    mapping = [('clear-workspace', 'clearWorkspace', False)]
-    convert_mapping_to_xml(scm, data, mapping, fail_required=True)
+        mapping = [
+            ('', 'urlString', data_url),
+        ]
+        helpers.convert_mapping_to_xml(
+            url_tuple, data, mapping, fail_required=True)
+    mapping = [
+        ('clear-workspace', 'clearWorkspace', False),
+    ]
+    helpers.convert_mapping_to_xml(scm, data, mapping, fail_required=True)
 
 
 def dimensions(registry, xml_parent, data):
@@ -1342,7 +1386,7 @@ def dimensions(registry, xml_parent, data):
         ('maintain-timestamp', 'canJobNoTouch', False),
         ('slave-checkout', 'forceAsSlave', False),
     ]
-    convert_mapping_to_xml(scm, data, mapping, fail_required=True)
+    helpers.convert_mapping_to_xml(scm, data, mapping, fail_required=True)
 
     # Folders to monitor. Default '/'
     folders = XML.SubElement(scm, 'folders')
@@ -1367,7 +1411,68 @@ def dimensions(registry, xml_parent, data):
         ('timezone', 'jobTimeZone', None),
         ('web-url', 'jobWebUrl', None),
     ]
-    convert_mapping_to_xml(scm, data, optional_mapping, fail_required=False)
+    helpers.convert_mapping_to_xml(
+        scm, data, optional_mapping, fail_required=False)
+
+
+def accurev(registry, xml_parent, data):
+    """yaml: accurev
+    Specifies the AccuRev SCM repository for this job.
+    Requires the Jenkins :jenkins-wiki:`AccuRev Plugin <AccuRev+Plugin>`.
+
+    :arg str depot: Depot you want to use for the current job (optional)
+    :arg str stream: Stream where the build will be generated from (optional)
+    :arg str server-name: AccuRev server you are using
+        for your builds (required)
+    :arg bool ignore-parent-changes: Ignore possibility
+        of changes in the parent stream (default false)
+    :arg bool clean-reference-tree: Deletes any external files
+        in reference tree (default false)
+    :arg bool build-from-snapshot: Creates snapshot
+        of the target stream, then populates and
+        builds from that snapshot (default false)
+    :arg bool do-not-pop-content: If checkbox is on, elements
+        are not populating vice versa (default false)
+    :arg str workspace: Name of existing workspace (optional)
+    :arg str reference-tree: Name of the reference tree (optional)
+    :arg str directory-offset: Relative directory path from
+        the default Jenkins workspace location
+        where the files from the stream, workspace,
+        or reference tree should be retrieved from. (optional)
+    :arg str sub-path: Makes a "best effort" to ensure
+        that only the sub-path is populated (optional)
+    :arg str filter-poll-scm: Specify directories or
+        files you want Jenkins to check before starting a build (optional)
+    :arg str snapshot-name-format: Naming conventions
+        for the snapshot in this field (optional)
+
+    Example:
+
+    .. literalinclude:: /../../tests/scm/fixtures/accurev001.yaml
+    """
+    scm = XML.SubElement(xml_parent,
+                         'scm', {'class': 'hudson.plugins.accurev.AccurevSCM'})
+    mapping = [
+        ('depot', 'depot', None),
+        ('stream', 'stream', None),
+        ('server-name', 'serverName', None),
+        ('ignore-parent-changes', 'ignoreStreamParent', False),
+        ('clean-reference-tree', 'cleanreftree', False),
+        ('build-from-snapshot', 'useSnapshot', False),
+        ('do-not-pop-content', 'dontPopContent', False),
+    ]
+    helpers.convert_mapping_to_xml(scm, data, mapping, fail_required=True)
+
+    additional_mapping = [
+        ('workspace', 'workspace', None),
+        ('reference-tree', 'reftree', None),
+        ('directory-offset', 'directoryOffset', None),
+        ('sub-path', 'subPath', None),
+        ('filter-poll-scm', 'filterForPollSCM', None),
+        ('snapshot-name-format', 'snapshotNameFormat', None),
+    ]
+    helpers.convert_mapping_to_xml(
+        scm, data, additional_mapping, fail_required=False)
 
 
 class SCM(jenkins_jobs.modules.base.Base):
@@ -1377,6 +1482,12 @@ class SCM(jenkins_jobs.modules.base.Base):
     component_list_type = 'scm'
 
     def gen_xml(self, xml_parent, data):
+
+        # multibranch-pipeline scm implementation is incompatible with SCM
+        if data.get('project-type') in ['multibranch', 'multibranch-defaults']:
+            logging.debug("SCM Module skipped for multibranch project-type.")
+            return
+
         scms_parent = XML.Element('scms')
         for scm in data.get('scm', []):
             self.registry.dispatch('scm', scms_parent, scm)
@@ -1416,9 +1527,14 @@ class PipelineSCM(jenkins_jobs.modules.base.Base):
                 raise JenkinsJobsException("'scm' missing or empty")
             elif scms_count == 1:
                 self.registry.dispatch('scm', definition_parent, scms[0])
-                XML.SubElement(definition_parent, 'scriptPath'
-                               ).text = pipeline_dict.get('script-path',
-                                                          'Jenkinsfile')
+                mapping = [
+                    ('script-path', 'scriptPath', 'Jenkinsfile'),
+                    ('lightweight-checkout', 'lightweight', None,
+                     [True, False]),
+                ]
+                helpers.convert_mapping_to_xml(
+                    definition_parent, pipeline_dict, mapping,
+                    fail_required=False)
             else:
                 raise JenkinsJobsException('Only one SCM can be specified '
                                            'as pipeline-scm')

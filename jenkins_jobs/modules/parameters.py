@@ -38,8 +38,7 @@ from jenkins_jobs.errors import JenkinsJobsException
 from jenkins_jobs.errors import MissingAttributeError
 from jenkins_jobs.errors import InvalidAttributeError
 import jenkins_jobs.modules.base
-from jenkins_jobs.modules.helpers import copyartifact_build_selector
-from jenkins_jobs.modules.helpers import convert_mapping_to_xml
+import jenkins_jobs.modules.helpers as helpers
 
 
 def base_param(registry, xml_parent, data, do_default, ptype):
@@ -191,18 +190,48 @@ def label_param(registry, xml_parent, data):
     :arg str name: the name of the parameter
     :arg str default: the default value of the parameter (optional)
     :arg str description: a description of the parameter (optional)
+    :arg str matching-label: to run all nodes matching label
+        'success', 'unstable' or 'allCases' (optional)
+    :arg str node-eligibility: all nodes, ignore temporary nodes or
+        ignore temporary offline nodes (optional, default all nodes)
 
-    Example::
+    Example:
 
-      parameters:
-        - label:
-            name: node
-            default: precise
-            description: "The node on which to run the job"
+    .. literalinclude::  /../../tests/parameters/fixtures/node-label001.yaml
+       :language: yaml
+
     """
-    base_param(registry, xml_parent, data, True,
+
+    pdef = base_param(registry, xml_parent, data, True,
                'org.jvnet.jenkins.plugins.nodelabelparameter.'
                'LabelParameterDefinition')
+
+    XML.SubElement(pdef, 'allNodesMatchingLabel').text = "true"
+
+    valid_types = ['allCases', 'success', 'unstable']
+    mapping = [
+        ('matching-label', 'triggerIfResult', 'allCases', valid_types),
+    ]
+    helpers.convert_mapping_to_xml(pdef, data, mapping, fail_required=True)
+
+    eligibility_label = data.get('node-eligibility', 'all').lower()
+    eligibility_label_dict = {
+        'all': 'org.jvnet.jenkins.plugins.'
+               'nodelabelparameter.node.'
+               'AllNodeEligibility',
+        'ignore-offline': 'org.jvnet.jenkins.plugins.'
+                          'nodelabelparameter.node.'
+                          'IgnoreOfflineNodeEligibility',
+        'ignore-temp-offline': 'org.jvnet.jenkins.plugins.'
+                               'nodelabelparameter.node.'
+                               'IgnoreTempOfflineNodeEligibility',
+    }
+    if eligibility_label not in eligibility_label_dict:
+        raise InvalidAttributeError(eligibility_label, eligibility_label,
+                                    eligibility_label_dict.keys())
+
+    XML.SubElement(pdef, 'nodeEligibility').set(
+        "class", eligibility_label_dict[eligibility_label])
 
 
 def node_param(registry, xml_parent, data):
@@ -307,11 +336,11 @@ def credentials_param(registry, xml_parent, data):
     :arg string default: default credentials ID (optional)
     :arg str description: a description of the parameter (optional)
 
-    Example::
+    Example:
 
-        .. literalinclude::
-            /../../tests/parameters/fixtures/credentials-param001.yaml
-           :language: yaml
+    .. literalinclude:: \
+    /../../tests/parameters/fixtures/credentials-param001.yaml
+       :language: yaml
 
     """
     cred_impl_types = {
@@ -357,8 +386,10 @@ def run_param(registry, xml_parent, data):
     """
     pdef = base_param(registry, xml_parent, data, False,
                       'hudson.model.RunParameterDefinition')
-    mapping = [('project-name', 'projectName', None)]
-    convert_mapping_to_xml(pdef, data, mapping, fail_required=True)
+    mapping = [
+        ('project-name', 'projectName', None),
+    ]
+    helpers.convert_mapping_to_xml(pdef, data, mapping, fail_required=True)
 
 
 def extended_choice_param(registry, xml_parent, data):
@@ -396,8 +427,18 @@ def extended_choice_param(registry, xml_parent, data):
     :arg str multi-select-delimiter: value between selections when the
         parameter is a multi-select (optional, default ',')
     :arg str groovy-script: the groovy script contents (optional, default ',')
+    :arg str groovy-script-file: location of groovy script file to generate
+        parameters (optional, default '')
     :arg str classpath: the classpath for the groovy script
         (optional, default ',')
+    :arg str default-groovy-script: the default groovy
+        script contents (optional, default '')
+    :arg str default-groovy-classpath: the default classpath for the
+        groovy script (optional, default '')
+    :arg str description-groovy-script: location of groovy script when value
+        description needs to come from a groovy script (optional, default '')
+    :arg str description-groovy-classpath: classpath for the value description
+        groovy script (optional, default '')
 
 
     Minimal Example:
@@ -442,9 +483,14 @@ def extended_choice_param(registry, xml_parent, data):
         ('description-property-file', 'descriptionPropertyFile', ''),
         ('description-property-key', 'descriptionPropertyKey', ''),
         ('groovy-script', 'groovyScript', ''),
+        ('groovy-script-file', 'groovyScriptFile', ''),
         ('classpath', 'groovyClasspath', ''),
+        ('default-groovy-script', 'defaultGroovyScript', ''),
+        ('default-groovy-classpath', 'defaultGroovyClasspath', ''),
+        ('description-groovy-script', 'descriptionGroovyScript', ''),
+        ('description-groovy-classpath', 'descriptionGroovyClasspath', ''),
     ]
-    convert_mapping_to_xml(pdef, data, mapping, fail_required=True)
+    helpers.convert_mapping_to_xml(pdef, data, mapping, fail_required=True)
 
 
 def validating_string_param(registry, xml_parent, data):
@@ -476,7 +522,7 @@ def validating_string_param(registry, xml_parent, data):
         ('regex', 'regex', None),
         ('msg', 'failedValidationMessage', None),
     ]
-    convert_mapping_to_xml(pdef, data, mapping, fail_required=True)
+    helpers.convert_mapping_to_xml(pdef, data, mapping, fail_required=True)
 
 
 def svn_tags_param(registry, xml_parent, data):
@@ -519,7 +565,7 @@ def svn_tags_param(registry, xml_parent, data):
         ('sort-z-to-a', 'reverseByName', False),
         ('', 'uuid', "1-1-1-1-1"),
     ]
-    convert_mapping_to_xml(pdef, data, mapping, fail_required=True)
+    helpers.convert_mapping_to_xml(pdef, data, mapping, fail_required=True)
 
 
 def dynamic_choice_param(registry, xml_parent, data):
@@ -656,8 +702,8 @@ def dynamic_string_scriptler_param(registry, xml_parent, data):
 
 def dynamic_param_common(registry, xml_parent, data, ptype):
     pdef = base_param(registry, xml_parent, data, False,
-                      'com.seitenbau.jenkins.plugins.dynamicparameter.'
-                      + ptype)
+                      'com.seitenbau.jenkins.plugins.dynamicparameter.' +
+                      ptype)
     XML.SubElement(pdef, '__remote').text = str(
         data.get('remote', False)).lower()
     XML.SubElement(pdef, '__script').text = data.get('script', None)
@@ -692,14 +738,14 @@ def dynamic_scriptler_param_common(registry, xml_parent, data, ptype):
                                           'dynamicparameter.scriptler.'
                                           'ScriptlerParameterDefinition_'
                                           '-ScriptParameter')
-            convert_mapping_to_xml(
+            helpers.convert_mapping_to_xml(
                 parameterXML, parameter, mapping, fail_required=True)
     mapping = [
         ('script-id', '__scriptlerScriptId', None),
         ('remote', '__remote', False),
         ('read-only', 'readonlyInputField', False),
     ]
-    convert_mapping_to_xml(pdef, data, mapping, fail_required=True)
+    helpers.convert_mapping_to_xml(pdef, data, mapping, fail_required=True)
 
 
 def matrix_combinations_param(registry, xml_parent, data):
@@ -727,8 +773,9 @@ def matrix_combinations_param(registry, xml_parent, data):
     mapping = [
         ('name', 'name', None),
         ('description', 'description', ''),
-        ('filter', 'defaultCombinationFilter', '')]
-    convert_mapping_to_xml(pdef, data, mapping, fail_required=True)
+        ('filter', 'defaultCombinationFilter', ''),
+    ]
+    helpers.convert_mapping_to_xml(pdef, data, mapping, fail_required=True)
 
     return pdef
 
@@ -761,9 +808,9 @@ def copyartifact_build_selector_param(registry, xml_parent, data):
         ('name', 'name', None),
         ('description', 'description', ''),
     ]
-    convert_mapping_to_xml(t, data, mapping, fail_required=True)
+    helpers.convert_mapping_to_xml(t, data, mapping, fail_required=True)
 
-    copyartifact_build_selector(t, data, 'defaultSelector')
+    helpers.copyartifact_build_selector(t, data, 'defaultSelector')
 
 
 def maven_metadata_param(registry, xml_parent, data):
@@ -815,7 +862,7 @@ def maven_metadata_param(registry, xml_parent, data):
         ('default-value', 'defaultValue', ''),
         ('versions-filter', 'versionFilter', ''),
     ]
-    convert_mapping_to_xml(pdef, data, mapping, fail_required=True)
+    helpers.convert_mapping_to_xml(pdef, data, mapping, fail_required=True)
 
     sort_order = data.get('sorting-order', 'descending').lower()
     sort_dict = {'descending': 'DESC',
@@ -830,7 +877,7 @@ def maven_metadata_param(registry, xml_parent, data):
         ('repository-username', 'username', ''),
         ('repository-password', 'password', ''),
     ]
-    convert_mapping_to_xml(pdef, data, mapping, fail_required=True)
+    helpers.convert_mapping_to_xml(pdef, data, mapping, fail_required=True)
 
 
 def hidden_param(parser, xml_parent, data):
@@ -883,12 +930,12 @@ def random_string_param(registry, xml_parent, data):
         ('description', 'description', ''),
         ('failed-validation-message', 'failedValidationMessage', ''),
     ]
-    convert_mapping_to_xml(pdef, data, mapping, fail_required=True)
+    helpers.convert_mapping_to_xml(pdef, data, mapping, fail_required=True)
 
 
 def git_parameter_param(registry, xml_parent, data):
     """yaml: git-parameter
-    This parameter allows to select a git tag, branch or revision number as
+    This parameter allows you to select a git tag, branch or revision number as
     parameter in Parametrized builds.
     Requires the Jenkins :jenkins-wiki:`Git Parameter Plugin
     <Git+Parameter+Plugin>`.
@@ -989,7 +1036,7 @@ def git_parameter_param(registry, xml_parent, data):
         ('useRepository', 'useRepository', ''),
         ('quickFilterEnabled', 'quickFilterEnabled', False),
     ]
-    convert_mapping_to_xml(pdef, data, mapping, fail_required=True)
+    helpers.convert_mapping_to_xml(pdef, data, mapping, fail_required=True)
 
 
 class Parameters(jenkins_jobs.modules.base.Base):

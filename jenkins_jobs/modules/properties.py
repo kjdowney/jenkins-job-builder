@@ -201,7 +201,7 @@ def gitlab(registry, xml_parent, data):
                             'com.dabsquared.gitlabjenkins.connection.'
                             'GitLabConnectionProperty')
     mapping = [
-        ('connection', 'gitLabConnection', None)
+        ('connection', 'gitLabConnection', None),
     ]
     helpers.convert_mapping_to_xml(gitlab, data, mapping, fail_required=True)
 
@@ -222,7 +222,8 @@ def least_load(registry, xml_parent, data):
                            'org.bstick12.jenkinsci.plugins.leastload.'
                            'LeastLoadDisabledProperty')
     mapping = [
-        ('disabled', 'leastLoadDisabled', True)]
+        ('disabled', 'leastLoadDisabled', True),
+    ]
     helpers.convert_mapping_to_xml(least, data, mapping, fail_required=True)
 
 
@@ -274,7 +275,7 @@ def throttle(registry, xml_parent, data):
     matrixopt = XML.SubElement(throttle, 'matrixOptions')
     mapping = [
         ('matrix-builds', 'throttleMatrixBuilds', True),
-        ('matrix-configs', 'throttleMatrixConfigurations', False)
+        ('matrix-configs', 'throttleMatrixConfigurations', False),
     ]
     helpers.convert_mapping_to_xml(
         matrixopt, data, mapping, fail_required=True)
@@ -313,7 +314,8 @@ def branch_api(registry, xml_parent, data):
 
     mapping = [
         ('time-period', 'durationName', 'Hour', valid_time_periods),
-        ('number-of-builds', 'count', 1)]
+        ('number-of-builds', 'count', 1),
+    ]
     helpers.convert_mapping_to_xml(branch, data, mapping, fail_required=True)
 
 
@@ -443,6 +445,7 @@ def authorization(registry, xml_parent, data):
             * **job-workspace**
             * **ownership-jobs**
             * **run-delete**
+            * **run-replay**
             * **run-update**
             * **scm-tag**
 
@@ -473,6 +476,7 @@ def authorization(registry, xml_parent, data):
         'job-workspace': 'hudson.model.Item.Workspace',
         'ownership-jobs': ''.join((ownership, 'Jobs')),
         'run-delete': 'hudson.model.Run.Delete',
+        'run-replay': 'hudson.model.Run.Replay',
         'run-update': 'hudson.model.Run.Update',
         'scm-tag': 'hudson.scm.SCM.Tag',
     }
@@ -505,7 +509,7 @@ def priority_sorter(registry, xml_parent, data):
         /../../tests/properties/fixtures/priority_sorter002.yaml
        :language: yaml
     """
-    plugin_info = registry.get_plugin_info('Priority Sorter Plugin')
+    plugin_info = registry.get_plugin_info('PrioritySorter')
     version = pkg_resources.parse_version(plugin_info.get('version', '0'))
 
     if version >= pkg_resources.parse_version("2.0"):
@@ -522,7 +526,9 @@ def priority_sorter(registry, xml_parent, data):
                                              'hudson.queueSorter.'
                                              'PrioritySorterJobProperty')
 
-        mapping = [('priority', 'priority', None)]
+        mapping = [
+            ('priority', 'priority', None),
+        ]
 
     helpers.convert_mapping_to_xml(
         priority_sorter_tag, data, mapping, fail_required=True)
@@ -558,28 +564,18 @@ def build_blocker(registry, xml_parent, data):
         raise JenkinsJobsException('blocking-jobs field is missing')
     elif data.get('blocking-jobs', None) is None:
         raise JenkinsJobsException('blocking-jobs list must not be empty')
-    XML.SubElement(blocker, 'useBuildBlocker').text = str(
-        data.get('use-build-blocker', True)).lower()
+
     jobs = ''
     for value in data['blocking-jobs']:
         jobs = jobs + value + '\n'
-    XML.SubElement(blocker, 'blockingJobs').text = jobs
-
-    block_level_list = ('GLOBAL', 'NODE')
-    block_level = data.get('block-level', 'GLOBAL')
-    if block_level not in block_level_list:
-        raise InvalidAttributeError('block-level',
-                                    block_level,
-                                    block_level_list)
-    XML.SubElement(blocker, 'blockLevel').text = block_level
-
-    queue_scanning_list = ('DISABLED', 'ALL', 'BUILDABLE')
-    queue_scanning = data.get('queue-scanning', 'DISABLED')
-    if queue_scanning not in queue_scanning_list:
-        raise InvalidAttributeError('queue-scanning',
-                                    queue_scanning,
-                                    queue_scanning_list)
-    XML.SubElement(blocker, 'scanQueueFor').text = queue_scanning
+    mapping = [
+        ('use-build-blocker', 'useBuildBlocker', True),
+        ('', 'blockingJobs', jobs),
+        ('blocking-level', 'blockLevel', 'GLOBAL', ('GLOBAL', 'NODE')),
+        ('queue-scanning', 'scanQueueFor', 'DISABLED',
+            ('DISABLED', 'ALL', 'BUILDABLE')),
+    ]
+    helpers.convert_mapping_to_xml(blocker, data, mapping, fail_required=True)
 
 
 def copyartifact(registry, xml_parent, data):
@@ -671,7 +667,9 @@ def heavy_job(registry, xml_parent, data):
     heavyjob = XML.SubElement(xml_parent,
                               'hudson.plugins.'
                               'heavy__job.HeavyJobProperty')
-    mapping = [('weight', 'weight', 1)]
+    mapping = [
+        ('weight', 'weight', 1),
+    ]
     helpers.convert_mapping_to_xml(heavyjob, data, mapping, fail_required=True)
 
 
@@ -704,7 +702,8 @@ def slave_utilization(registry, xml_parent, data):
     mapping = [
         ('', 'needsExclusiveAccessToNode', exclusive_node_access),
         ('', 'slaveUtilizationPercentage', percent),
-        ('single-instance-per-slave', 'singleInstancePerSlave', False)]
+        ('single-instance-per-slave', 'singleInstancePerSlave', False),
+    ]
     helpers.convert_mapping_to_xml(
         utilization, data, mapping, fail_required=True)
 
@@ -762,7 +761,9 @@ def zeromq_event(registry, xml_parent, data):
     zmq_event = XML.SubElement(xml_parent,
                                'org.jenkinsci.plugins.'
                                'ZMQEventPublisher.HudsonNotificationProperty')
-    mapping = [('', 'enabled', True)]
+    mapping = [
+        ('', 'enabled', True),
+    ]
     helpers.convert_mapping_to_xml(
         zmq_event, data, mapping, fail_required=True)
 
@@ -796,7 +797,7 @@ def slack(registry, xml_parent, data):
     :arg bool include-custom-message: Include a custom message into the
         notification. (default false)
     :arg str custom-message: Custom message to be included. (default '')
-    :arg str room: A comma seperated list of rooms / channels to send
+    :arg str room: A comma separated list of rooms / channels to send
         the notifications to. (default '')
 
     Example:
@@ -915,7 +916,7 @@ def build_discarder(registry, xml_parent, data):
 
 def slave_prerequisites(registry, xml_parent, data):
     """yaml: slave-prerequisites
-    This plugin allows to check prerequisites on slave before
+    This plugin allows you to check prerequisites on slave before
     a job can run a build on it
 
     Requires the Jenkins :jenkins-wiki:`Slave Prerequisites Plugin
@@ -947,13 +948,12 @@ def slave_prerequisites(registry, xml_parent, data):
             'cmd': 'windows batch command',
             'shell': 'shell script'}),
     ]
-    helpers.convert_mapping_to_xml(
-        prereqs, data, mappings, fail_required=True)
+    helpers.convert_mapping_to_xml(prereqs, data, mappings, fail_required=True)
 
 
 def groovy_label(registry, xml_parent, data):
     """yaml: groovy-label
-    This plugin allows to use Groovy script to restrict where this project
+    This plugin allows you to use Groovy script to restrict where this project
     can be run.
 
     Requires the Jenkins :jenkins-wiki:`Groovy Label Assignment Plugin
@@ -1001,8 +1001,7 @@ def groovy_label(registry, xml_parent, data):
         ('sandbox', 'sandbox', False),
     ]
 
-    helpers.convert_mapping_to_xml(
-        security, data, mapping, fail_required=True)
+    helpers.convert_mapping_to_xml(security, data, mapping, fail_required=True)
     if data and 'classpath' in data:
         classpath = XML.SubElement(security, 'classpath')
         for value in data['classpath']:
@@ -1089,7 +1088,7 @@ def docker_container(registry, xml_parent, data):
         ('commit-on-success', 'tagOnCompletion', False),
         ('additional-tag', 'additionalTag', ''),
         ('push-on-success', 'pushOnSuccess', False),
-        ('clean-local-images', 'cleanImages', True)
+        ('clean-local-images', 'cleanImages', True),
     ]
     helpers.convert_mapping_to_xml(
         xml_docker, data, mapping, fail_required=True)

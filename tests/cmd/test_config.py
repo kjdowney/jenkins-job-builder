@@ -94,20 +94,20 @@ class TestConfigs(CmdTestsBase):
         jenkins_jobs.jjb_config.get_plugin_config(
             'new_plugin', 'setting')
         self.assertIn(
-            'Defining plugin configuration using [old_plugin] is deprecated',
+            'using a [old_plugin] section in your config file is deprecated',
             self.logger.output)
         self.assertNotIn(
-            'Defining plugin configuration using [old_plugin_no_conf] is '
+            'using a [old_plugin_no_conf] secton in your config file is '
             'deprecated',
             self.logger.output)
         self.assertNotIn(
-            'Defining plugin configuration using [new_plugin] is deprecated',
+            'using a [new_plugin] section in your config file is deprecated',
             self.logger.output)
 
     def test_config_options_not_replaced_by_cli_defaults(self):
         """
         Run test mode and check config settings from conf file retained
-        when non of the global CLI options are set.
+        when none of the global CLI options are set.
         """
         config_file = os.path.join(self.fixtures_path,
                                    'settings_from_config.ini')
@@ -124,7 +124,7 @@ class TestConfigs(CmdTestsBase):
     def test_config_options_overriden_by_cli(self):
         """
         Run test mode and check config settings from conf file retained
-        when non of the global CLI options are set.
+        when none of the global CLI options are set.
         """
         args = ['--user', 'myuser', '--password', 'mypassword',
                 '--ignore-cache', '--flush-cache', '--allow-empty-variables',

@@ -121,7 +121,7 @@ def archive(registry, xml_parent, data):
     :arg bool only-if-success: archive artifacts only if build is successful
         (default false)
     :arg bool fingerprint: fingerprint all archived artifacts (default false)
-    :arg bool default-excludes: This option allows to enable or disable the
+    :arg bool default-excludes: This option allows you to enable or disable the
         default Ant exclusions. (default true)
     :arg bool case-sensitive: Treat include and exclude patterns as case
         sensitive. (default true)
@@ -148,8 +148,8 @@ def archive(registry, xml_parent, data):
 
 def blame_upstream(registry, xml_parent, data):
     """yaml: blame-upstream
-    Notify upstream commiters when build fails
-    Requires the Jenkins :jenkins-wiki:`Blame upstream commiters Plugin
+    Notify upstream committers when build fails
+    Requires the Jenkins :jenkins-wiki:`Blame upstream committers Plugin
     <Blame+Upstream+Committers+Plugin>`.
 
     Example:
@@ -268,7 +268,7 @@ def hue_light(registry, xml_parent, data):
     :arg int light-id: ID of light. Define multiple lights by a comma as a
         separator (required)
     :arg string pre-build: Colour of building state (default 'blue')
-    :arg string good-build: Colour of succesful state (default 'green')
+    :arg string good-build: Colour of successful state (default 'green')
     :arg string unstable-build: Colour of unstable state (default 'yellow')
     :arg string bad-build: Colour of unsuccessful state (default 'red')
 
@@ -388,7 +388,8 @@ def mqtt(registry, xml_parent, data):
                                         'EXACTLY_ONCE': '2'}),
         ('retain-message', 'retainMessage', False)
     ]
-    helpers.convert_mapping_to_xml(mqtt, data, mqtt_mapping)
+    helpers.convert_mapping_to_xml(mqtt, data, mqtt_mapping,
+                                   fail_required=False)
 
 
 def codecover(registry, xml_parent, data):
@@ -507,6 +508,8 @@ def trigger_parameterized_builds(registry, xml_parent, data):
         if any of the property files are not found in the workspace.
         Only valid when 'property-file' is specified.
         (default 'False')
+    :arg bool trigger-from-child-projects: Trigger build from child projects.
+        Used for matrix projects. (default 'False')
     :arg bool use-matrix-child-files: Use files in workspaces of child
         builds (default 'False')
     :arg str matrix-child-combination-filter: A Groovy expression to filter
@@ -560,6 +563,10 @@ def trigger_parameterized_builds(registry, xml_parent, data):
 
         condition = XML.SubElement(tconfig, 'condition')
         condition.text = project_def.get('condition', 'ALWAYS')
+        trigger_from_child_projects = XML.SubElement(
+            tconfig, 'triggerFromChildProjects')
+        trigger_from_child_projects.text = str(
+            project_def.get('trigger-from-child-projects', False)).lower()
         trigger_with_no_params = XML.SubElement(tconfig,
                                                 'triggerWithNoParameters')
         trigger_with_no_params.text = str(
@@ -631,39 +638,174 @@ def clone_workspace(registry, xml_parent, data):
         'hudson.plugins.cloneworkspace.CloneWorkspacePublisher')
     cloneworkspace.set('plugin', 'clone-workspace-scm')
 
+    criteria_valid_types = ['Any', 'Not Failed', 'Successful']
+    archive_valid_types = ['TAR', 'ZIP']
+
     mappings = [
         ('workspace-glob', 'workspaceGlob', ''),
         ('override-default-excludes', 'overrideDefaultExcludes', False),
+        ('criteria', 'criteria', 'Any', criteria_valid_types),
+        ('archive-method', 'archiveMethod', 'TAR', archive_valid_types),
     ]
     helpers.convert_mapping_to_xml(
         cloneworkspace, data, mappings, fail_required=True)
 
-    if 'workspace-exclude-glob' in data:
-        XML.SubElement(
-            cloneworkspace,
-            'workspaceExcludeGlob').text = data['workspace-exclude-glob']
+    mappings = [
+        ('workspace-exclude-glob', 'workspaceExcludeGlob', ''),
+    ]
+    helpers.convert_mapping_to_xml(
+        cloneworkspace, data, mappings, fail_required=False)
 
-    criteria_list = ['Any', 'Not Failed', 'Successful']
 
-    criteria = data.get('criteria', 'Any').title()
+def cloud_foundry(parser, xml_parent, data):
+    """yaml: cloudfoundry
+    Pushes a project to Cloud Foundry or a CF-based platform (e.g. Stackato) at
+    the end of a build. Requires the Jenkins :jenkins-wiki:`Cloud Foundry
+    Plugin <Cloud+Foundry+Plugin>`.
 
-    if 'criteria' in data and criteria not in criteria_list:
-        raise JenkinsJobsException(
-            'clone-workspace criteria must be one of: '
-            + ', '.join(criteria_list))
-    else:
-        XML.SubElement(cloneworkspace, 'criteria').text = criteria
+    :arg str target: The API endpoint of the platform you want to push to.
+        This is the URL you use to access the platform, possibly with ".api"
+        added. (required)
+    :arg str organization: An org is a development account that an individual
+        or multiple collaborators can own and use (required)
+    :arg str space: Provide users with access to a shared location for
+        application development, deployment, and maintenance (required)
+    :arg str credentials-id: credentials-id of the user (required)
+    :arg bool self-signed: Allow self-signed SSL certificates from the target
+        (default false)
+    :arg bool reset-app: Delete app before pushing app's configurations
+        (default false)
+    :arg int plugin-timeout: The time in seconds before the Cloud Foundry
+        plugin stops fetching logs and marks the build a failure (default 120)
+    :arg list create-services: Create services automatically (default '')
 
-    archive_list = ['TAR', 'ZIP']
+        :create-services:
+            * **name** ('str') -- Service name (default '')
+            * **type** ('str') -- Service type (default '')
+            * **plan** ('str') -- Service plan (default '')
+            * **reset-service** ('bool') -- Delete the service before creating
+                the new one (default false)
+    :arg str value: Select to read configuration from manifest file or to enter
+        configuration in Jenkins (default 'manifestFile')
+    :arg str manifest-file: Path to manifest file (default 'manifest.yml')
+    :arg str app-name: The application's name. Default to Jenkins build name.
+        (default '')
+    :arg int memory: The application's memory usage in MB (default 512)
+    :arg str host-name: The hostname of the URI to access your application.
+        Default to app-name (default '')
+    :arg int instances: Number of instances of your application on creation
+        (default 1)
+    :arg int manifest-timeout: The time in seconds before the health-manager
+        gives up on starting the application (default 60)
+    :arg bool no-route: No URI path will be created to access the application
+        (default false)
+    :arg str app-path: Path to application (default '')
+    :arg build-pack: If your application requires a custom buildpack, you can
+        use this to specify its URL or name (default '')
+    :arg str stack: If your application requires a custom stack, you can use
+        this to specify its name. (default '')
+    :arg str command: Set a custom start command for your application
+        (default '')
+    :arg str domain: The domain of the URI to access your application
+        (default '')
+    :arg list environment-variables: Inject environment variables
 
-    archive_method = data.get('archive-method', 'TAR').upper()
+        :environment-variables:
+            * **key** ('str') -- Environment variable key (default '')
+            * **value** ('str') -- Environment variable value (default '')
+    :arg list services-names: Name of service instances
 
-    if 'archive-method' in data and archive_method not in archive_list:
-        raise JenkinsJobsException(
-            'clone-workspace archive-method must be one of: '
-            + ', '.join(archive_list))
-    else:
-        XML.SubElement(cloneworkspace, 'archiveMethod').text = archive_method
+        :services-names:
+            * **name** ('str') -- Name of the service instance (default '')
+
+    Minimal example:
+
+    .. literalinclude::
+       /../../tests/publishers/fixtures/cloudfoundry-minimal.yaml
+       :language: yaml
+
+    Full example:
+
+    .. literalinclude:: /../../tests/publishers/fixtures/cloudfoundry-full.yaml
+       :language: yaml
+    """
+    cloud_foundry = XML.SubElement(
+        xml_parent, 'com.hpe.cloudfoundryjenkins.CloudFoundryPushPublisher')
+    cloud_foundry.set('plugin', 'cloudfoundry')
+
+    mapping = [
+        ('target', 'target', None),
+        ('organization', 'organization', None),
+        ('space', 'cloudSpace', None),
+        ('credentials-id', 'credentialsId', None),
+        ('self-signed', 'selfSigned', False),
+        ('reset-app', 'resetIfExists', False),
+        ('timeout', 'pluginTimeout', 120),
+    ]
+    helpers.convert_mapping_to_xml(
+        cloud_foundry, data, mapping, fail_required=True)
+    XML.SubElement(cloud_foundry, 'appURIs').text = ''
+
+    create_services = XML.SubElement(cloud_foundry, 'servicesToCreate')
+    create_services_mapping = [
+        ('name', 'name', ''),
+        ('type', 'type', ''),
+        ('plan', 'plan', ''),
+        ('reset-service', 'resetService', '')]
+    for service in data.get('create-services', ''):
+        create_services_sub = XML.SubElement(
+            create_services,
+            'com.hpe.cloudfoundryjenkins.CloudFoundryPushPublisher_-Service')
+        helpers.convert_mapping_to_xml(create_services_sub,
+                                       service,
+                                       create_services_mapping,
+                                       fail_required=True)
+
+    manifest = XML.SubElement(cloud_foundry, 'manifestChoice')
+    valid_values = ['manifestFile', 'jenkinsConfig']
+    manifest_mapping = [
+        ('value', 'value', 'manifestFile', valid_values),
+        ('manifest-file', 'manifestFile', 'manifest.yml'),
+        ('app-name', 'appName', ''),
+        ('memory', 'memory', 512),
+        ('host-name', 'hostname', ''),
+        ('instances', 'instances', 1),
+        ('manifest-timeout', 'timeout', 60),
+        ('no-route', 'noRoute', False),
+        ('app-path', 'appPath', ''),
+        ('build-pack', 'buildpack', ''),
+        ('stack', 'stack', ''),
+        ('command', 'command', ''),
+        ('domain', 'domain', ''),
+    ]
+    helpers.convert_mapping_to_xml(
+        manifest, data, manifest_mapping, fail_required=True)
+
+    if 'environment-variables' in data:
+        env_vars = XML.SubElement(manifest, 'envVars')
+        env_vars_mapping = [
+            ('key', 'key', ''),
+            ('value', 'value', '')]
+        for var in data['environment-variables']:
+            env_vars_sub = XML.SubElement(
+                env_vars,
+                'com.hpe.cloudfoundryjenkins.CloudFoundryPushPublisher_-'
+                'EnvironmentVariable')
+            helpers.convert_mapping_to_xml(
+                env_vars_sub, var, env_vars_mapping, fail_required=True)
+
+    if 'services-names' in data:
+        services_names = XML.SubElement(manifest, 'servicesNames')
+        service_name_mapping = [('name', 'name', '')]
+        for name in data['services-names']:
+            services_names_sub = XML.SubElement(
+                services_names,
+                'com.hpe.cloudfoundryjenkins.CloudFoundryPushPublisher_-'
+                'ServiceName')
+            helpers.convert_mapping_to_xml(services_names_sub,
+                                           name,
+                                           service_name_mapping,
+                                           fail_required=True)
 
 
 def cloverphp(registry, xml_parent, data):
@@ -1925,8 +2067,8 @@ def claim_build(registry, xml_parent, data):
 
 def base_email_ext(registry, xml_parent, data, ttype):
     trigger = XML.SubElement(xml_parent,
-                             'hudson.plugins.emailext.plugins.trigger.'
-                             + ttype)
+                             'hudson.plugins.emailext.plugins.trigger.' +
+                             ttype)
     email = XML.SubElement(trigger, 'email')
     XML.SubElement(email, 'recipientList').text = ''
     XML.SubElement(email, 'subject').text = '$PROJECT_DEFAULT_SUBJECT'
@@ -2080,8 +2222,7 @@ def email_ext(registry, xml_parent, data):
     }
     ctype = data.get('content-type', 'default')
     if ctype not in content_type_mime:
-        raise JenkinsJobsException('email-ext content type must be one of: %s'
-                                   % ', '.join(content_type_mime.keys()))
+        raise InvalidAttributeError(ctype, ctype, content_type_mime.keys())
     XML.SubElement(emailext, 'contentType').text = content_type_mime[ctype]
 
     mappings = [
@@ -2099,16 +2240,17 @@ def email_ext(registry, xml_parent, data):
     helpers.convert_mapping_to_xml(
         emailext, data, mappings, fail_required=True)
 
-    matrix_dict = {'both': 'BOTH',
-                   'only-configurations': 'ONLY_CONFIGURATIONS',
-                   'only-parent': 'ONLY_PARENT'}
+    matrix_dict = {
+        'both': 'BOTH',
+        'only-configurations': 'ONLY_CONFIGURATIONS',
+        'only-parent': 'ONLY_PARENT'
+    }
     matrix_trigger = data.get('matrix-trigger', None)
     # If none defined, then do not create entry
     if matrix_trigger is not None:
         if matrix_trigger not in matrix_dict:
-            raise JenkinsJobsException("matrix-trigger entered is not valid, "
-                                       "must be one of: %s" %
-                                       ", ".join(matrix_dict.keys()))
+            raise InvalidAttributeError(matrix_trigger, matrix_trigger,
+                                        matrix_dict.keys())
         XML.SubElement(emailext, 'matrixTriggerMode').text = matrix_dict.get(
             matrix_trigger)
 
@@ -2319,9 +2461,6 @@ def logparser(registry, xml_parent, data):
         (default false)
     :arg bool fail-on-error: mark build failed on error (default false)
     :arg bool show-graphs: show parser trend graphs (default true)
-
-    Example:
-
 
     Minimal Example:
 
@@ -2637,6 +2776,7 @@ def sonar(registry, xml_parent, data):
     <http://docs.sonarqube.org/display/SONAR/\
         Analyzing+with+SonarQube+Scanner+for+Jenkins>`_
 
+    :arg str installation-name: name of the Sonar instance to use (optional)
     :arg str jdk: JDK to use (inherited from the job if omitted). (optional)
     :arg str branch: branch onto which the analysis will be posted (default '')
     :arg str language: source code language (default '')
@@ -2645,6 +2785,8 @@ def sonar(registry, xml_parent, data):
         (default false)
     :arg str maven-opts: options given to maven (default '')
     :arg str additional-properties: sonar analysis parameters (default '')
+    :arg str maven-installation-name: the name of the Maven installation
+      to use (optional)
     :arg dict skip-global-triggers:
         :Triggers: * **skip-when-scm-change** (`bool`): skip analysis when
                      build triggered by scm (default false)
@@ -2680,9 +2822,14 @@ def sonar(registry, xml_parent, data):
 
     sonar = XML.SubElement(xml_parent, 'hudson.plugins.sonar.SonarPublisher')
     sonar.set('plugin', 'sonar')
-
+    if 'installation-name' in data:
+        XML.SubElement(sonar, 'installationName').text = data[
+            'installation-name']
     if 'jdk' in data:
         XML.SubElement(sonar, 'jdk').text = data['jdk']
+    if 'maven-installation-name' in data:
+        XML.SubElement(sonar, 'mavenInstallationName').text = data[
+            'maven-installation-name']
 
     mappings = [
         ('branch', 'branch', ''),
@@ -2706,6 +2853,88 @@ def sonar(registry, xml_parent, data):
             triggers, data_triggers, triggers_mappings, fail_required=True)
 
     helpers.config_file_provider_settings(sonar, data)
+
+
+def sounds(parser, xml_parent, data):
+    """yaml: sounds
+    Play audio clips locally through sound hardware,
+    remotely by piping them through an operating system command,
+    or simultaneously through all browsers on a Jenkins page.
+
+    Requires the Jenkins :jenkins-wiki:`Jenkins Sounds plugin
+    <Jenkins+Sounds+plugin>`
+
+    :arg dict success: Play on success
+
+        :success:
+            .. _sound_and_cond:
+
+            * **sound** (`str`) - Sound name
+            * **from** (`list`) - Previous build result (default is all)
+                :from values:
+                    * **success**
+                    * **unstable**
+                    * **failure**
+                    * **not_build**
+                    * **aborted**
+
+    :arg dict unstable: Play on unstable.
+        Specifying sound and conditions see :ref:`above <sound_and_cond>`.
+    :arg dict failure: Play on failure.
+        Specifying sound and conditions see :ref:`above <sound_and_cond>`.
+    :arg dict not_build: Play on not build.
+        Specifying sound and conditions see :ref:`above <sound_and_cond>`.
+    :arg dict aborted: Play on aborted.
+        Specifying sound and conditions see :ref:`above <sound_and_cond>`.
+
+    Minimal example using defaults:
+
+    .. literalinclude::  /../../tests/publishers/fixtures/sounds001.yaml
+       :language: yaml
+
+    Full example:
+
+    .. literalinclude::  /../../tests/publishers/fixtures/sounds003.yaml
+       :language: yaml
+    """
+
+    mapping_dict = {'success': hudson_model.SUCCESS,
+                    'unstable': hudson_model.UNSTABLE,
+                    'failure': hudson_model.FAILURE,
+                    'not_build': hudson_model.NOTBUILD,
+                    'aborted': hudson_model.ABORTED}
+    sounds = XML.SubElement(xml_parent, 'net.hurstfrost.hudson.'
+                                        'sounds.HudsonSoundsNotifier')
+    events = XML.SubElement(sounds, 'soundEvents')
+    for status, v in data.items():
+        try:
+            model = mapping_dict[status]
+        except KeyError:
+            raise InvalidAttributeError('build status', status, mapping_dict)
+
+        event = XML.SubElement(events,
+                               'net.hurstfrost.hudson.sounds.'
+                               'HudsonSoundsNotifier_-SoundEvent')
+        XML.SubElement(event, 'soundId').text = v['sound']
+        to_result = XML.SubElement(event, 'toResult')
+        XML.SubElement(to_result, 'name').text = model['name']
+        XML.SubElement(to_result, 'ordinal').text = model['ordinal']
+        XML.SubElement(to_result, 'color').text = model['color']
+        XML.SubElement(to_result, 'completeBuild').text = str(
+            model['complete']).lower()
+
+        from_results = XML.SubElement(event, 'fromResults')
+        results = ['not_build', 'success', 'aborted', 'failure', 'unstable']
+        if 'from' in v:
+            results = v['from']
+        for result in results:
+            model = mapping_dict[result]
+            from_result = XML.SubElement(from_results, 'hudson.model.Result')
+            XML.SubElement(from_result, 'name').text = model['name']
+            XML.SubElement(from_result, 'ordinal').text = model['ordinal']
+            XML.SubElement(from_result, 'color').text = model['color']
+            XML.SubElement(from_result, 'completeBuild').text = str(
+                model['complete']).lower()
 
 
 def performance(registry, xml_parent, data):
@@ -3678,7 +3907,7 @@ def postbuildscript(registry, xml_parent, data):
         xml_parent,
         'org.jenkinsci.plugins.postbuildscript.PostBuildScript')
 
-    info = registry.get_plugin_info('Jenkins PostBuildScript Plugin')
+    info = registry.get_plugin_info('postbuildscript')
     # Note: Assume latest version of plugin is preferred config format
     version = pkg_resources.parse_version(
         info.get('version', str(sys.maxsize)))
@@ -3788,8 +4017,8 @@ def postbuildscript(registry, xml_parent, data):
                 for shell_script in script_data:
                     script_xml = XML.SubElement(
                         scripts_xml,
-                        'org.jenkinsci.plugins.postbuildscript.'
-                        + script_types[step])
+                        'org.jenkinsci.plugins.postbuildscript.' +
+                        script_types[step])
                     file_path_xml = XML.SubElement(script_xml, 'filePath')
                     file_path_xml.text = shell_script
 
@@ -4327,7 +4556,7 @@ def plot(registry, xml_parent, data):
         filename, same behaviour as the Jenkins Plot plugin)
     :arg list series: list data series definitions
 
-      :Serie: * **file** (`str`) : files to include
+      :Series: * **file** (`str`) : files to include
               * **inclusion-flag** filtering mode for CSV files. Possible
                 values are:
 
@@ -4596,6 +4825,73 @@ def gitlab_notifier(registry, xml_parent, data):
         ('mark-unstable-as-success', 'markUnstableAsSuccess', False),
     ]
     helpers.convert_mapping_to_xml(top, data, mappings, fail_required=True)
+
+
+def gitlab_vote(registry, xml_parent, data):
+    """yaml: gitlab-vote
+    Set vote for build status on GitLab merge request.
+    Requires the Jenkins :jenkins-wiki:`GitLab Plugin <GitLab+Plugin>`.
+
+    Example:
+
+    .. literalinclude::
+        ../../tests/publishers/fixtures/gitlab-vote.yaml
+        :language: yaml
+    """
+    XML.SubElement(
+        xml_parent,
+        'com.dabsquared.gitlabjenkins.publisher.GitLabVotePublisher')
+
+
+def gitlab_message(registry, xml_parent, data):
+    """yaml: gitlab-message
+    Add note with build status on GitLab merge request.
+    Requires the Jenkins :jenkins-wiki:`GitLab Plugin <GitLab+Plugin>`.
+
+    :arg bool failure-only: make a comment only on failure (default false)
+    :arg bool success-note: make a comment on GitLab Merge Request
+        if build succeeds (default false)
+    :arg bool failure-note: make a comment on GitLab Merge Request
+        if build failed (default false)
+    :arg bool abort-note: make a comment on GitLab Merge Request
+        if build aborted (default false)
+    :arg bool unstable-note: make a comment on GitLab Merge Request
+        if build unstable (default false)
+
+    :arg str success-note-text: text of comment on success build (default '')
+    :arg str failure-note-text: text of comment on failed build (default '')
+    :arg str abort-note-text: text of comment on aborted build (default '')
+    :arg str unstable-note-text: text of comment on unstable build (default '')
+
+    Minimal Example:
+
+    .. literalinclude::
+        /../../tests/publishers/fixtures/gitlab-message-minimal.yaml
+       :language: yaml
+
+    Full Example:
+
+    .. literalinclude::
+        /../../tests/publishers/fixtures/gitlab-message-full.yaml
+       :language: yaml
+    """
+    gitlab = XML.SubElement(
+        xml_parent,
+        'com.dabsquared.gitlabjenkins.publisher.GitLabMessagePublisher'
+    )
+    gitlab.set('plugin', 'gitlab-plugin')
+
+    mapping = [('failure-only', 'onlyForFailure', False),
+               ('success-note', 'replaceSuccessNote', False),
+               ('failure-note', 'replaceFailureNote', False),
+               ('abort-note', 'replaceAbortNote', False),
+               ('unstable-note', 'replaceUnstableNote', False),
+               ('success-note-text', 'successNoteText', ''),
+               ('failure-note-text', 'failureNoteText', ''),
+               ('abort-note-text', 'abortNoteText', ''),
+               ('unstable-note-text', 'unstableNoteText', '')]
+
+    helpers.convert_mapping_to_xml(gitlab, data, mapping, fail_required=True)
 
 
 def zulip(registry, xml_parent, data):
@@ -5048,6 +5344,9 @@ def s3(registry, xml_parent, data):
     Requires the Jenkins :jenkins-wiki:`S3 plugin <S3+Plugin>`.
 
     :arg str s3-profile: Globally-defined S3 profile to use
+    :arg bool dont-wait-for-concurrent-builds: Don't wait
+      for completion of concurrent builds before publishing to S3
+      (default false)
     :arg list entries:
       :entries:
         * **destination-bucket** (`str`) - Destination S3 bucket
@@ -5068,9 +5367,6 @@ def s3(registry, xml_parent, data):
         * **flatten** (`bool`) - Ignore the directory structure of the
           artifacts in the source project and copy all matching artifacts
           directly into the specified bucket. (default false)
-        * **dont-wait-for-concurrent-builds** (`bool`) - Don't wait
-          for completion of concurrent builds before publishing to S3
-          (default false)
     :arg list metadata-tags:
       :metadata-tags:
         * **key** Metadata key for files from this build. It will be
@@ -5088,6 +5384,10 @@ def s3(registry, xml_parent, data):
     if data is None or not data.get('entries'):
         raise JenkinsJobsException('No filesets defined.')
 
+    XML.SubElement(deployer, 'dontWaitForConcurrentBuildCompletion').text = (
+        str(data.get('dont-wait-for-concurrent-builds', False)).lower()
+    )
+
     XML.SubElement(deployer, 'profileName').text = data.get('s3-profile')
 
     entries = XML.SubElement(deployer, 'entries')
@@ -5104,9 +5404,7 @@ def s3(registry, xml_parent, data):
                     ('uploadFromSlave', 'upload-from-slave', False),
                     ('managedArtifacts', 'managed-artifacts', False),
                     ('useServerSideEncryption', 's3-encryption', False),
-                    ('flatten', 'flatten', False),
-                    ('dontWaitForConcurrentBuildCompletion',
-                     'dont-wait-for-concurrent-builds', False)]
+                    ('flatten', 'flatten', False)]
 
         for xml_key, yaml_key, default in settings:
             xml_config = XML.SubElement(fileset, xml_key)
@@ -5613,6 +5911,12 @@ def conditional_publisher(registry, xml_parent, data):
     :arg str condition-kind: Condition kind that must be verified before the
       action is executed. Valid values and their additional attributes are
       described in the conditions_ table.
+    :arg bool condition-aggregation: If true Matrix Aggregation will be
+      enabled. (default false)
+    :arg str condition-aggregation-kind: Condition Aggregation kind that
+      must be verified before the
+      action is executed. Valid values and their additional attributes are
+      described in the conditions_ table.
     :arg str on-evaluation-failure: What should be the outcome of the build
       if the evaluation of the condition fails. Possible values are `fail`,
       `mark-unstable`, `run-and-mark-unstable`, `run` and `dont-run`.
@@ -5679,8 +5983,8 @@ def conditional_publisher(registry, xml_parent, data):
     <../../tests/publishers/fixtures/conditional-publisher002.yaml>`
 
     """
-    def publish_condition(cdata):
-        kind = cdata['condition-kind']
+    def publish_condition_tag(cdata, prefix, condition_tag):
+        kind = cdata['%s-kind' % prefix]
         ctag = XML.SubElement(cond_publisher, condition_tag)
         class_pkg = 'org.jenkins_ci.plugins.run_condition'
 
@@ -5693,12 +5997,13 @@ def conditional_publisher(registry, xml_parent, data):
         elif kind == "boolean-expression":
             ctag.set('class',
                      class_pkg + '.core.BooleanCondition')
-            XML.SubElement(ctag, "token").text = cdata['condition-expression']
+            XML.SubElement(ctag,
+                           "token").text = cdata['%s-expression' % prefix]
         elif kind == "current-status":
             ctag.set('class',
                      class_pkg + '.core.StatusCondition')
             wr = XML.SubElement(ctag, 'worstResult')
-            wr_name = cdata['condition-worst']
+            wr_name = cdata['%s-worst' % prefix]
             if wr_name not in hudson_model.THRESHOLDS:
                 raise JenkinsJobsException(
                     "threshold must be one of %s" %
@@ -5711,7 +6016,7 @@ def conditional_publisher(registry, xml_parent, data):
                 str(wr_threshold['complete']).lower()
 
             br = XML.SubElement(ctag, 'bestResult')
-            br_name = cdata['condition-best']
+            br_name = cdata['%s-best' % prefix]
             if br_name not in hudson_model.THRESHOLDS:
                 raise JenkinsJobsException(
                     "threshold must be one of %s" %
@@ -5725,22 +6030,23 @@ def conditional_publisher(registry, xml_parent, data):
         elif kind == "shell":
             ctag.set('class',
                      class_pkg + '.contributed.ShellCondition')
-            XML.SubElement(ctag, "command").text = cdata['condition-command']
+            XML.SubElement(ctag, "command").text = cdata['%s-command' % prefix]
         elif kind == "windows-shell":
             ctag.set('class',
                      class_pkg + '.contributed.BatchFileCondition')
-            XML.SubElement(ctag, "command").text = cdata['condition-command']
+            XML.SubElement(ctag, "command").text = cdata['%s-command' % prefix]
         elif kind == "regexp":
             ctag.set('class',
                      class_pkg + '.core.ExpressionCondition')
             XML.SubElement(ctag,
-                           "expression").text = cdata['condition-expression']
-            XML.SubElement(ctag, "label").text = cdata['condition-searchtext']
+                           "expression").text = cdata['%s-expression' % prefix]
+            XML.SubElement(ctag,
+                           "label").text = cdata['%s-searchtext' % prefix]
         elif kind == "file-exists":
             ctag.set('class',
                      class_pkg + '.core.FileExistsCondition')
-            XML.SubElement(ctag, "file").text = cdata['condition-filename']
-            basedir = cdata.get('condition-basedir', 'workspace')
+            XML.SubElement(ctag, "file").text = cdata['%s-filename' % prefix]
+            basedir = cdata.get('%s-basedir', 'workspace')
             basedir_tag = XML.SubElement(ctag, "baseDir")
             if "workspace" == basedir:
                 basedir_tag.set('class',
@@ -5754,8 +6060,15 @@ def conditional_publisher(registry, xml_parent, data):
                                 class_pkg + '.common.'
                                 'BaseDirectory$JenkinsHome')
         else:
-            raise JenkinsJobsException('%s is not a valid condition-kind '
-                                       'value.' % kind)
+            raise JenkinsJobsException('%s is not a valid %s-kind '
+                                       'value.' % (kind, prefix))
+
+    def publish_condition(cdata):
+        return publish_condition_tag(cdata, 'condition', condition_tag)
+
+    def publish_aggregation_condition(cdata):
+        return publish_condition_tag(cdata, 'condition-aggregation',
+                                     aggregation_condition_tag)
 
     def publish_action(parent, action):
         try:
@@ -5781,6 +6094,7 @@ def conditional_publisher(registry, xml_parent, data):
     root_tag = XML.SubElement(xml_parent, flex_publisher_tag)
     publishers_tag = XML.SubElement(root_tag, "publishers")
     condition_tag = "condition"
+    aggregation_condition_tag = "aggregationCondition"
 
     evaluation_classes_pkg = 'org.jenkins_ci.plugins.run_condition'
     evaluation_classes = {
@@ -5793,9 +6107,24 @@ def conditional_publisher(registry, xml_parent, data):
         'dont-run': evaluation_classes_pkg + '.BuildStepRunner$DontRun',
     }
 
+    plugin_info = registry.get_plugin_info("Flexible Publish Plugin")
+    # Note: Assume latest version of plugin is preferred config format
+    version = pkg_resources.parse_version(
+        plugin_info.get('version', str(sys.maxsize)))
+
+    # Support for MatrixAggregator was added in v0.11
+    # See JENKINS-14494
+    has_matrix_aggregator = version >= pkg_resources.parse_version("0.11")
+
     for cond_action in data:
         cond_publisher = XML.SubElement(publishers_tag, cond_publisher_tag)
         publish_condition(cond_action)
+        condition_aggregation = cond_action.get('condition-aggregation', False)
+        if condition_aggregation and has_matrix_aggregator:
+            publish_aggregation_condition(cond_action)
+        elif condition_aggregation:
+            raise JenkinsJobsException("Matrix Aggregation is not supported "
+                                       "in your plugin version.")
         evaluation_flag = cond_action.get('on-evaluation-failure', 'fail')
         if evaluation_flag not in evaluation_classes.keys():
             raise JenkinsJobsException('on-evaluation-failure value '
@@ -5810,11 +6139,6 @@ def conditional_publisher(registry, xml_parent, data):
             actions = cond_action['action']
 
             action_parent = cond_publisher
-
-            plugin_info = registry.get_plugin_info("Flexible Publish Plugin")
-            # Note: Assume latest version of plugin is preferred config format
-            version = pkg_resources.parse_version(
-                plugin_info.get('version', str(sys.maxsize)))
 
             # XML tag changed from publisher to publisherList in v0.13
             # check the plugin version to determine further operations
@@ -6280,7 +6604,7 @@ def flowdock(registry, xml_parent, data):
 
     :arg str token: API token for the targeted flow.
       (required)
-    :arg str tags: Comma-separated list of tags to incude in message
+    :arg str tags: Comma-separated list of tags to include in message
       (default "")
     :arg bool chat-notification: Send chat notification when build fails
       (default true)
@@ -6344,9 +6668,9 @@ def clamav(registry, xml_parent, data):
     Check files with ClamAV, an open source antivirus engine.
     Requires the Jenkins :jenkins-wiki:`ClamAV Plugin <ClamAV+Plugin>`.
 
-    :arg str includes: Comma seperated list of files that should be scanned.
+    :arg str includes: Comma separated list of files that should be scanned.
         Must be set for ClamAV to check for artifacts. (default '')
-    :arg str excludes: Comma seperated list of files that should be ignored
+    :arg str excludes: Comma separated list of files that should be ignored
         (default '')
 
     Full Example:
@@ -6392,7 +6716,7 @@ def testselector(registry, xml_parent, data):
       (default "")
     :arg str show-fields: Shown in the tests tree
       (default "")
-    :arg str multiplicity-field: Amount of times the test should run
+    :arg str multiplicity-field: Number of times the test should run
       (default "")
 
     Example:
@@ -6630,7 +6954,7 @@ def slack(registry, xml_parent, data):
         (default '')
     :arg str build-server-url: Specify the URL for your server installation.
         (default '/')
-    :arg str room: A comma seperated list of rooms / channels to post the
+    :arg str room: A comma separated list of rooms / channels to post the
         notifications to. (default '')
     :arg bool notify-start: Send notification when the job starts (>=2.0).
         (default false)
@@ -6648,6 +6972,12 @@ def slack(registry, xml_parent, data):
         again after being unstable or failed (>=2.0). (default false)
     :arg bool notify-repeated-failure: Send notification when job fails
         successively (previous build was also a failure) (>=2.0).
+        (default false)
+    :arg bool notify-regression: Send notification when number of failed tests
+        increased or the failed tests are different than previous build
+        (>=2.2). (default false)
+    :arg bool include-failed-tests: includes all failed tests when some tests
+        failed. does nothing if no failed tests were found (>=2.2).
         (default false)
     :arg bool include-test-summary: Include the test summary (>=2.0).
         (default false)
@@ -6713,8 +7043,10 @@ def slack(registry, xml_parent, data):
         ('notify-unstable', 'notifyUnstable', False),
         ('notify-failure', 'notifyFailure', False),
         ('notify-back-to-normal', 'notifyBackToNormal', False),
+        ('notify-regression', 'notifyRegression', False),
         ('notify-repeated-failure', 'notifyRepeatedFailure', False),
         ('include-test-summary', 'includeTestSummary', False),
+        ('include-failed-tests', 'includeFailedTests', False),
         ('commit-info-choice', 'commitInfoChoice', 'NONE'),
         ('include-custom-message', 'includeCustomMessage', False),
         ('custom-message', 'customMessage', ''),
@@ -7132,8 +7464,8 @@ def tasks(registry, xml_parent, data):
         should ensure that all new warnings will be finally fixed in subsequent
         builds. Depends on ``compute-new-warnings`` option. (default false)
     :arg bool only-use-stable-as-ref: Use the last stable build as the
-        reference to compute the number of new warnings against. This allows to
-        ignore interim unstable builds for which the number of warnings
+        reference to compute the number of new warnings against. This allows
+        you to ignore interim unstable builds for which the number of warnings
         decreased. Note that the last stable build is evaluated only by
         inspecting the unit test failures. The static analysis results are not
         considered. Depends on ``compute-new-warnings`` option. (default false)

@@ -101,6 +101,7 @@ def config_file_provider_builder(xml_parent, data):
             ('file-id', 'fileId', None),
             ('target', 'targetLocation', ''),
             ('variable', 'variable', ''),
+            ('replace-tokens', 'replaceTokens', False),
         ]
         convert_mapping_to_xml(xml_file, file, mapping, fail_required=True)
 
@@ -589,7 +590,7 @@ def trigger_project(tconfigs, project_def, param_order=None):
                     mapping, fail_required=True)
 
 
-def convert_mapping_to_xml(parent, data, mapping, fail_required=False):
+def convert_mapping_to_xml(parent, data, mapping, fail_required=True):
     """Convert mapping to XML
 
     fail_required affects the last parameter of the mapping field when it's
@@ -600,7 +601,7 @@ def convert_mapping_to_xml(parent, data, mapping, fail_required=False):
     If fail_required is False parameter is treated as optional. Logic will skip
     configuring the XML tag for the parameter. We recommend for new plugins to
     set fail_required=True and instead of optional parameters provide a default
-    value for all paramters that are not required instead.
+    value for all parameters that are not required instead.
 
     valid_options provides a way to check if the value the user input is from a
     list of available options. When the user pass a value that is not supported
@@ -624,12 +625,9 @@ def convert_mapping_to_xml(parent, data, mapping, fail_required=False):
                 valid_dict = elem[3]
 
         # Use fail_required setting to allow support for optional parameters
-        # we will phase this out in the future as we rework plugins so that
-        # optional parameters use a default setting instead.
         if val is None and fail_required is True:
             raise MissingAttributeError(optname)
 
-        # (Deprecated) in the future we will default to fail_required True
         # if no value is provided then continue else leave it
         # up to the user if they want to use an empty XML tag
         if val is None and fail_required is False:

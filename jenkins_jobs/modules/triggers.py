@@ -42,7 +42,7 @@ from jenkins_jobs.errors import JenkinsJobsException
 from jenkins_jobs.errors import MissingAttributeError
 import jenkins_jobs.modules.base
 from jenkins_jobs.modules import hudson_model
-from jenkins_jobs.modules.helpers import convert_mapping_to_xml
+import jenkins_jobs.modules.helpers as helpers
 
 logger = logging.getLogger(str(__name__))
 
@@ -153,9 +153,9 @@ def build_gerrit_triggers(xml_parent, data):
                     "format instead.", event)
 
             if not tag_name:
-                known = ', '.join(available_simple_triggers.keys()
-                                  + ['comment-added-event',
-                                     'comment-added-contains-event'])
+                known = ', '.join(available_simple_triggers.keys() +
+                                  ['comment-added-event',
+                                   'comment-added-contains-event'])
                 msg = ("The event '%s' under 'trigger-on' is not one of the "
                        "known: %s.") % (event, known)
                 raise JenkinsJobsException(msg)
@@ -170,8 +170,10 @@ def build_gerrit_triggers(xml_parent, data):
                 mapping = [
                     ('exclude-drafts', 'excludeDrafts', False),
                     ('exclude-trivial-rebase', 'excludeTrivialRebase', False),
-                    ('exclude-no-code-change', 'excludeNoCodeChange', False)]
-                convert_mapping_to_xml(pc, pce, mapping, fail_required=True)
+                    ('exclude-no-code-change', 'excludeNoCodeChange', False),
+                ]
+                helpers.convert_mapping_to_xml(
+                    pc, pce, mapping, fail_required=True)
 
             if 'comment-added-event' in event.keys():
                 comment_added_event = event['comment-added-event']
@@ -181,8 +183,9 @@ def build_gerrit_triggers(xml_parent, data):
                 mapping = [
                     ('approval-category', 'verdictCategory', None),
                     ('approval-value',
-                        'commentAddedTriggerApprovalValue', None)]
-                convert_mapping_to_xml(cadded,
+                        'commentAddedTriggerApprovalValue', None),
+                ]
+                helpers.convert_mapping_to_xml(cadded,
                     comment_added_event, mapping, fail_required=True)
 
             if 'comment-added-contains-event' in event.keys():
@@ -204,10 +207,8 @@ def build_gerrit_skip_votes(xml_parent, data):
     skip_vote_node = XML.SubElement(xml_parent, 'skipVote')
     skip_vote = data.get('skip-vote', {})
     for result_kind, tag_name in outcomes:
-        if skip_vote.get(result_kind, False):
-            XML.SubElement(skip_vote_node, tag_name).text = 'true'
-        else:
-            XML.SubElement(skip_vote_node, tag_name).text = 'false'
+        setting = skip_vote.get(result_kind, False)
+        XML.SubElement(skip_vote_node, tag_name).text = str(setting).lower()
 
 
 def gerrit(registry, xml_parent, data):
@@ -560,7 +561,8 @@ def gerrit(registry, xml_parent, data):
         ('readable-message', 'readableMessage', False),
         ('dependency-jobs', 'dependencyJobsNames', ''),
     ]
-    convert_mapping_to_xml(gtrig, data, general_mappings, fail_required=True)
+    helpers.convert_mapping_to_xml(
+        gtrig, data, general_mappings, fail_required=True)
     notification_levels = ['NONE', 'OWNER', 'OWNER_REVIEWERS', 'ALL',
                            'SERVER_DEFAULT']
     notification_level = data.get('notification-level', 'SERVER_DEFAULT')
@@ -616,7 +618,8 @@ def gerrit(registry, xml_parent, data):
         ('custom-url', 'customUrl', ''),
         ('server-name', 'serverName', '__ANY__'),
     ]
-    convert_mapping_to_xml(gtrig, data, message_mappings, fail_required=True)
+    helpers.convert_mapping_to_xml(
+        gtrig, data, message_mappings, fail_required=True)
 
 
 def dockerhub_notification(registry, xml_parent, data):
@@ -841,7 +844,7 @@ def jms_messaging(registry, xml_parent, data):
         - FedMsg
 
     Requires the Jenkins :jenkins-wiki:`JMS Messaging Plugin
-    Pipeline Plugin <JMS+Messaging+Plugin>`.
+    <JMS+Messaging+Plugin>`.
 
     :arg str selector: The JSON or YAML formatted text that conforms to
         the schema for defining the various OpenShift resources. (default '')
@@ -876,18 +879,19 @@ def jms_messaging(registry, xml_parent, data):
         ("selector", 'selector', ''),
         ("provider-name", 'providerName', ''),
     ]
-    convert_mapping_to_xml(jmsm, data, mapping, fail_required=True)
+    helpers.convert_mapping_to_xml(jmsm, data, mapping, fail_required=True)
 
     checks = data.get('checks', [])
     if len(checks) > 0:
         msgchecks = XML.SubElement(jmsm, 'checks')
         for check in checks:
-            msgcheck = XML.SubElement(msgchecks, namespace
-                                      + 'messaging.checks.MsgCheck')
+            msgcheck = XML.SubElement(msgchecks, namespace +
+                                      'messaging.checks.MsgCheck')
             mapping = [
                 ('field', 'field', ''),
-                ('expected-value', 'expectedValue', '')]
-            convert_mapping_to_xml(
+                ('expected-value', 'expectedValue', ''),
+            ]
+            helpers.convert_mapping_to_xml(
                 msgcheck, check, mapping, fail_required=True)
 
 
@@ -967,6 +971,10 @@ def github_pull_request(registry, xml_parent, data):
         allows you to selectively test pull requests destined for these
         branches only. Supports regular expressions (e.g. 'master',
         'feature-.*'). (optional)
+    :arg list black-list-target-branches: Adding branches to this blacklist
+        allows you to selectively prevent pull requests builds destined for
+        these branches. Supports regular expressions (e.g. 'master',
+        'feature-.*'). (optional)
     :arg string auth-id: the auth id to use (optional)
     :arg string build-desc-template: the template for build descriptions in
         jenkins (optional)
@@ -993,11 +1001,25 @@ def github_pull_request(registry, xml_parent, data):
         (optional)
     :arg bool cancel-builds-on-update: cancel existing builds when a PR is
         updated (optional)
+    :arg list included-regions: Each inclusion uses regular expression pattern
+        matching, and must be separated by a new line. An empty list implies
+        that everything is included. (optional)
+    :arg list excluded-regions: Each exclusion uses regular expression pattern
+        matching, and must be separated by a new line. Exclusions take
+        precedence over inclusions, if there is an overlap between included
+        and excluded regions. (optional)
 
-    Example:
+    Full Example:
 
-    .. literalinclude:: /../../tests/triggers/fixtures/github-pull-request.yaml
+    .. literalinclude::
+       /../../tests/triggers/fixtures/github-pull-request-full.yaml
+       :language: yaml
 
+    Minimal Example:
+
+    .. literalinclude::
+       /../../tests/triggers/fixtures/github-pull-request-minimal.yaml
+       :language: yaml
     """
     ghprb = XML.SubElement(xml_parent, 'org.jenkinsci.plugins.ghprb.'
                            'GhprbTrigger')
@@ -1015,6 +1037,10 @@ def github_pull_request(registry, xml_parent, data):
     black_list_labels_string = "\n".join(data.get('black-list-labels', []))
     XML.SubElement(ghprb, 'blackListLabels').text = black_list_labels_string
     XML.SubElement(ghprb, 'cron').text = data.get('cron', '')
+    excluded_regions_string = "\n".join(data.get('excluded-regions', []))
+    XML.SubElement(ghprb, 'excludedRegions').text = excluded_regions_string
+    included_regions_string = "\n".join(data.get('included-regions', []))
+    XML.SubElement(ghprb, 'includedRegions').text = included_regions_string
 
     build_desc_template = data.get('build-desc-template', '')
     if build_desc_template:
@@ -1039,6 +1065,14 @@ def github_pull_request(registry, xml_parent, data):
         ghprb_wltb = XML.SubElement(ghprb, 'whiteListTargetBranches')
         for branch in white_list_target_branches:
             be = XML.SubElement(ghprb_wltb, 'org.jenkinsci.plugins.'
+                                'ghprb.GhprbBranch')
+            XML.SubElement(be, 'branch').text = str(branch)
+
+    black_list_target_branches = data.get('black-list-target-branches', [])
+    if black_list_target_branches:
+        ghprb_bltb = XML.SubElement(ghprb, 'blackListTargetBranches')
+        for branch in black_list_target_branches:
+            be = XML.SubElement(ghprb_bltb, 'org.jenkinsci.plugins.'
                                 'ghprb.GhprbBranch')
             XML.SubElement(be, 'branch').text = str(branch)
 
@@ -1211,9 +1245,9 @@ def gitlab_merge_request(registry, xml_parent, data):
         ('publish-build-progress-messages', '__publishBuildProgressMessages',
          True),
         ('auto-close-failed', '__autoCloseFailed', False),
-        ('auto-merge-passed', '__autoMergePassed', False)
+        ('auto-merge-passed', '__autoMergePassed', False),
     ]
-    convert_mapping_to_xml(ghprb, data, mapping, True)
+    helpers.convert_mapping_to_xml(ghprb, data, mapping, True)
 
 
 def gitlab(registry, xml_parent, data):
@@ -1225,6 +1259,10 @@ def gitlab(registry, xml_parent, data):
     :arg bool trigger-push: Build on Push Events (default true)
     :arg bool trigger-merge-request: Build on Merge Request Events (default
         true)
+    :arg bool trigger-accepted-merge-request: Build on Accepted Merge Request
+        Events (>= 1.4.6) (default false)
+    :arg bool trigger-closed-merge-request: Build on Closed Merge Request
+        Events (>= 1.4.6) (default false)
     :arg str trigger-open-merge-request-push: Rebuild open Merge Requests
         on Push Events.
 
@@ -1279,7 +1317,7 @@ def gitlab(registry, xml_parent, data):
                        **include-branches** and **exclude-branches** lists.
 
     RegexBasedFilter   Filter branches by regex
-                       The target branch regex allows to limit the
+                       The target branch regex allows you to limit the
                        execution of this job to certain branches. Any
                        branch matching the specified pattern in
                        **target-branch-regex** triggers the job. No
@@ -1318,31 +1356,42 @@ def gitlab(registry, xml_parent, data):
     if plugin_ver >= pkg_resources.parse_version("1.1.26"):
         mapping = [
             ('trigger-open-merge-request-push',
-             'triggerOpenMergeRequestOnPush', 'never', valid_merge_request)]
-        convert_mapping_to_xml(gitlab, data, mapping, fail_required=True)
+             'triggerOpenMergeRequestOnPush', 'never', valid_merge_request),
+        ]
+        helpers.convert_mapping_to_xml(
+            gitlab, data, mapping, fail_required=True)
     else:
         mapping = [
             ('trigger-open-merge-request-push',
-             'triggerOpenMergeRequestOnPush', True)]
-        convert_mapping_to_xml(gitlab, data, mapping, fail_required=True)
+             'triggerOpenMergeRequestOnPush', True),
+        ]
+        helpers.convert_mapping_to_xml(
+            gitlab, data, mapping, fail_required=True)
 
     if plugin_ver < pkg_resources.parse_version('1.2.0'):
         if data.get('branch-filter-type', '') == 'All':
             data['branch-filter-type'] = ''
         valid_filters = ['', 'NameBasedFilter', 'RegexBasedFilter']
         mapping = [
-            ('branch-filter-type', 'branchFilterName', '', valid_filters)]
-        convert_mapping_to_xml(gitlab, data, mapping, fail_required=True)
+            ('branch-filter-type', 'branchFilterName', '', valid_filters),
+        ]
+        helpers.convert_mapping_to_xml(
+            gitlab, data, mapping, fail_required=True)
     else:
         valid_filters = ['All', 'NameBasedFilter', 'RegexBasedFilter']
         mapping = [
-            ('branch-filter-type', 'branchFilterType', 'All', valid_filters)]
-        convert_mapping_to_xml(gitlab, data, mapping, fail_required=True)
+            ('branch-filter-type', 'branchFilterType', 'All', valid_filters),
+        ]
+        helpers.convert_mapping_to_xml(
+            gitlab, data, mapping, fail_required=True)
 
     XML.SubElement(gitlab, 'spec').text = ''
     mapping = [
         ('trigger-push', 'triggerOnPush', True),
         ('trigger-merge-request', 'triggerOnMergeRequest', True),
+        ('trigger-accepted-merge-request', 'triggerOnAcceptedMergeRequest',
+         False),
+        ('trigger-closed-merge-request', 'triggerOnClosedMergeRequest', False),
         ('trigger-note', 'triggerOnNoteRequest', True),
         ('note-regex', 'noteRegex', 'Jenkins please retry a build'),
         ('ci-skip', 'ciSkip', True),
@@ -1361,7 +1410,7 @@ def gitlab(registry, xml_parent, data):
         ('include-branches', 'includeBranchesSpec', []),
         ('exclude-branches', 'excludeBranchesSpec', []),
     )
-    convert_mapping_to_xml(gitlab, data, mapping, fail_required=True)
+    helpers.convert_mapping_to_xml(gitlab, data, mapping, fail_required=True)
 
     for yaml_name, xml_name, default_val in list_mapping:
         value = ', '.join(data.get(yaml_name, default_val))
@@ -1383,31 +1432,26 @@ def build_result(registry, xml_parent, data):
     :arg str cron: The cron syntax with which to poll the jobs for the
         supplied result (default '')
 
-    Example::
+    Full Example:
 
-      triggers:
-        - build-result:
-            combine: true
-            cron: '* * * * *'
-            groups:
-              - jobs:
-                  - foo
-                  - example
-                results:
-                  - unstable
-              - jobs:
-                  - foo2
-                results:
-                  - not-built
-                  - aborted
+    .. literalinclude::
+       /../../tests/triggers/fixtures/build-result-full.yaml
+       :language: yaml
+
+    Minimal Example:
+
+    .. literalinclude::
+       /../../tests/triggers/fixtures/build-result-minimal.yaml
+       :language: yaml
     """
     brt = XML.SubElement(xml_parent, 'org.jenkinsci.plugins.'
                          'buildresulttrigger.BuildResultTrigger')
+    brt.set('plugin', 'buildresult-trigger')
     mapping = [
         ('cron', 'spec', ''),
         ('combine', 'combinedJobs', False),
     ]
-    convert_mapping_to_xml(brt, data, mapping, fail_required=True)
+    helpers.convert_mapping_to_xml(brt, data, mapping, fail_required=True)
     jobs_info = XML.SubElement(brt, 'jobsInfo')
     result_dict = {'success': 'SUCCESS',
                    'unstable': 'UNSTABLE',
@@ -1419,15 +1463,20 @@ def build_result(registry, xml_parent, data):
                               'buildresulttrigger.model.'
                               'BuildResultTriggerInfo')
         jobs_string = ",".join(group['jobs'])
-        mapping = [('', 'jobNames', jobs_string, group)]
-        convert_mapping_to_xml(brti, group, mapping, fail_required=True)
+        mapping = [
+            ('', 'jobNames', jobs_string, group),
+        ]
+        helpers.convert_mapping_to_xml(
+            brti, group, mapping, fail_required=True)
         checked_results = XML.SubElement(brti, 'checkedResults')
         for result in group.get('results', ['success']):
             model_checked = XML.SubElement(checked_results, 'org.jenkinsci.'
                                            'plugins.buildresulttrigger.model.'
                                            'CheckedResult')
-            mapping = [('', 'checked', result, result_dict)]
-            convert_mapping_to_xml(
+            mapping = [
+                ('', 'checked', result, result_dict),
+            ]
+            helpers.convert_mapping_to_xml(
                 model_checked, result_dict, mapping, fail_required=True)
 
 
@@ -1525,7 +1574,7 @@ def monitor_folders(registry, xml_parent, data):
         ('path', 'path', ''),
         ('cron', 'spec', ''),
     ]
-    convert_mapping_to_xml(ft, data, mappings, fail_required=True)
+    helpers.convert_mapping_to_xml(ft, data, mappings, fail_required=True)
 
     includes = data.get('includes', '')
     XML.SubElement(ft, 'includes').text = ",".join(includes)
@@ -1548,7 +1597,7 @@ def monitor_files(registry, xml_parent, data):
 
         :File:
             * **path** (`str`) -- File path to monitor. You can use a pattern
-              that specifies a set of files if you dont know the real file
+              that specifies a set of files if you don't know the real file
               path. (required)
             * **strategy** (`str`) -- Choose your strategy if there is more
               than one matching file. Can be one of Ignore file ('IGNORE') or
@@ -1644,7 +1693,7 @@ def monitor_files(registry, xml_parent, data):
             ('strategy', 'strategy', 'LATEST', valid_strategies),
             ('', 'inspectingContentFile', bool(check_content)),
         ]
-        convert_mapping_to_xml(
+        helpers.convert_mapping_to_xml(
             file_tag, file_info, files_mapping, fail_required=True)
 
         base_content_tag = XML.SubElement(file_tag, 'contentFileTypes')
@@ -1709,23 +1758,21 @@ def ivy(registry, xml_parent, data):
     """
     it = XML.SubElement(xml_parent,
                         'org.jenkinsci.plugins.ivytrigger.IvyTrigger')
-    mappings = [('path', 'ivyPath', None),
-                ('settings-path', 'ivySettingsPath', None),
-                ('properties-file', 'propertiesFilePath', None),
-                ('properties-content', 'propertiesContent', None),
-                ('debug', 'debug', False),
-                ('download-artifacts', 'downloadArtifacts', True),
-                ('enable-concurrent', 'enableConcurrentBuild', False),
-                ('cron', 'spec', '')]
-    for prop in mappings:
-        opt, xmlopt, default_val = prop[:3]
-        val = data.get(opt, default_val)
-        if val is not None:
-            if type(val) == bool:
-                val = str(val).lower()
-            if type(val) == list:
-                val = ";".join(val)
-            XML.SubElement(it, xmlopt).text = val
+    mapping = [
+        ('path', 'ivyPath', None),
+        ('settings-path', 'ivySettingsPath', None),
+        ('properties-content', 'propertiesContent', None),
+        ('debug', 'debug', False),
+        ('download-artifacts', 'downloadArtifacts', True),
+        ('enable-concurrent', 'enableConcurrentBuild', False),
+        ('cron', 'spec', ''),
+    ]
+    helpers.convert_mapping_to_xml(it, data, mapping, fail_required=False)
+
+    properties_file_path = data.get('properties-file', [])
+    XML.SubElement(it, 'propertiesFilePath').text = ";".join(
+        properties_file_path)
+
     label = data.get('label')
     XML.SubElement(it, 'labelRestriction').text = str(bool(label)).lower()
     if label:
@@ -1772,7 +1819,7 @@ def script(registry, xml_parent, data):
         ('', 'labelRestriction', bool(label)),
         ('', 'triggerLabel', label),
     ]
-    convert_mapping_to_xml(st, data, mappings, fail_required=False)
+    helpers.convert_mapping_to_xml(st, data, mappings, fail_required=False)
 
 
 def groovy_script(registry, xml_parent, data):
@@ -1822,7 +1869,7 @@ def groovy_script(registry, xml_parent, data):
         ('', 'labelRestriction', bool(label)),
         ('', 'triggerLabel', label),
     ]
-    convert_mapping_to_xml(gst, data, mappings, fail_required=False)
+    helpers.convert_mapping_to_xml(gst, data, mappings, fail_required=False)
 
 
 def rabbitmq(registry, xml_parent, data):
@@ -1845,8 +1892,9 @@ def rabbitmq(registry, xml_parent, data):
         'RemoteBuildTrigger')
     mapping = [
         ('', 'spec', ''),
-        ('token', 'remoteBuildToken', None)]
-    convert_mapping_to_xml(rabbitmq, data, mapping, fail_required=True)
+        ('token', 'remoteBuildToken', None),
+    ]
+    helpers.convert_mapping_to_xml(rabbitmq, data, mapping, fail_required=True)
 
 
 def parameterized_timer(parser, xml_parent, data):
@@ -1871,8 +1919,112 @@ def parameterized_timer(parser, xml_parent, data):
         'ParameterizedTimerTrigger')
     mapping = [
         ('', 'spec', ''),
-        ('cron', 'parameterizedSpecification', None)]
-    convert_mapping_to_xml(param_timer, data, mapping, fail_required=True)
+        ('cron', 'parameterizedSpecification', None),
+    ]
+    helpers.convert_mapping_to_xml(
+        param_timer, data, mapping, fail_required=True)
+
+
+def jira_changelog(registry, xml_parent, data):
+    """yaml: jira-changelog
+    Sets up a trigger that listens to JIRA issue changes
+    Requires the Jenkins :jenkins-wiki:`JIRA Trigger Plugin
+    <JIRA+Trigger+Plugin>`.
+
+    :arg str jql-filter: Must match updated issues to trigger a build.
+        (default '')
+    :arg list changelog-matchers:
+
+        :Custom Field Matcher:
+            * **custom-field-name** (`str`) -- The custom field
+                name that has been changed during the issue update.
+                (default '')
+            * **compare-new-value** (`bool`) -- Compare the
+                new value of the updated field. (default false)
+            * **new-value** (`str`) -- The new value of the updated field.
+                (default '')
+            * **compare-old-value** (`bool`) -- Compare the
+                old value of the updated field. (default false)
+            * **old-value** (`str`) -- The value
+                before the field is updated. (default '')
+
+        :JIRA Field Matcher:
+            * **jira-field-ID** (`str`) -- The JIRA Field ID that
+                has been changed during the issue update. (default '')
+            * **compare-new-value** (`bool`) -- Compare the new value
+                of the updated field. (default false)
+            * **new-value** (`str`) -- The new value of the updated field.
+                (default '')
+            * **compare-old-value** (`bool`) -- Compare the old value
+                of the updated field. (default false)
+            * **old-value** (`str`) -- The value before
+                the field is updated. (default '')
+
+    :arg list parameter-mapping:
+
+        :Issue Attribute Path:
+            * **jenkins-parameter** (`str`) -- Jenkins parameter name
+                (default '')
+            * **issue-attribute-path** (`str`) -- Attribute path (default '')
+
+    Minimal Example:
+
+    .. literalinclude::
+        /../../tests/triggers/fixtures/jira-changelog-minimal.yaml
+       :language: yaml
+
+    Full Example:
+
+    .. literalinclude::
+        /../../tests/triggers/fixtures/jira-changelog-full.yaml
+       :language: yaml
+    """
+    jcht = XML.SubElement(xml_parent, 'com.ceilfors.jenkins.plugins.'
+                          'jiratrigger.JiraChangelogTrigger')
+    jcht.set('plugin', 'jira-trigger')
+
+    mapping = [
+        ('jql-filter', 'jqlFilter', ''),
+    ]
+    helpers.convert_mapping_to_xml(jcht, data, mapping, fail_required=True)
+
+    changelog = XML.SubElement(jcht, 'changelogMatchers')
+    mappings = [
+        ('field', 'field', ''),
+        ('new-value', 'newValue', ''),
+        ('old-value', 'oldValue', ''),
+        ('compare-new-value', 'comparingNewValue', False),
+        ('compare-old-value', 'comparingOldValue', False),
+    ]
+    for matcher in data.get('changelog-matchers', []):
+
+        fieldtype = matcher.get('field-type')
+        if fieldtype == 'CUSTOM':
+            parent_tag = XML.SubElement(changelog, 'com.ceilfors.jenkins.'
+                                        'plugins.jiratrigger.changelog.'
+                                        'CustomFieldChangelogMatcher')
+            XML.SubElement(parent_tag, 'fieldType').text = 'CUSTOM'
+
+        elif fieldtype == 'JIRA':
+            parent_tag = XML.SubElement(changelog, 'com.ceilfors.jenkins.'
+                                        'plugins.jiratrigger.changelog.'
+                                        'JiraFieldChangelogMatcher')
+            XML.SubElement(parent_tag, 'fieldType').text = 'JIRA'
+
+        helpers.convert_mapping_to_xml(parent_tag, matcher,
+            mappings, fail_required=True)
+
+    param = XML.SubElement(jcht, 'parameterMappings')
+    parameter_mappings = [
+        ('jenkins-parameter', 'jenkinsParameter', ''),
+        ('issue-attribute-path', 'issueAttributePath', ''),
+    ]
+    for parameter in data.get('parameter-mapping', []):
+        parent = XML.SubElement(param, 'com.ceilfors.jenkins.plugins.'
+                                'jiratrigger.parameter.'
+                                'IssueAttributePathParameterMapping')
+        helpers.convert_mapping_to_xml(
+            parent, parameter, parameter_mappings, fail_required=True)
 
 
 def jira_comment_trigger(registry, xml_parent, data):
@@ -1909,8 +2061,9 @@ def jira_comment_trigger(registry, xml_parent, data):
     jct.set('plugin', 'jira-trigger')
     mapping = [
         ('jql-filter', 'jqlFilter', ''),
-        ('comment-pattern', 'commentPattern', '(?i)build this please')]
-    convert_mapping_to_xml(jct, data, mapping, fail_required=True)
+        ('comment-pattern', 'commentPattern', '(?i)build this please'),
+    ]
+    helpers.convert_mapping_to_xml(jct, data, mapping, fail_required=True)
 
     param = XML.SubElement(jct, 'parameterMappings')
     for parameter in data.get('parameter-mapping', []):
@@ -1919,8 +2072,9 @@ def jira_comment_trigger(registry, xml_parent, data):
                                 'IssueAttributePathParameterMapping')
         parameter_mappings = [
             ('jenkins-parameter', 'jenkinsParameter', ''),
-            ('issue-attribute-path', 'issueAttributePath', '')]
-        convert_mapping_to_xml(
+            ('issue-attribute-path', 'issueAttributePath', ''),
+        ]
+        helpers.convert_mapping_to_xml(
             parent, parameter, parameter_mappings, fail_required=True)
 
 
@@ -1992,7 +2146,8 @@ def stash_pull_request(registry, xml_parent, data):
             'deletePreviousBuildFinishComments', False),
         ('cancel-outdated-jobs', 'cancelOutdatedJobsEnabled', False),
     ]
-    convert_mapping_to_xml(pr_trigger, data, mappings, fail_required=True)
+    helpers.convert_mapping_to_xml(
+        pr_trigger, data, mappings, fail_required=True)
 
 
 class Triggers(jenkins_jobs.modules.base.Base):

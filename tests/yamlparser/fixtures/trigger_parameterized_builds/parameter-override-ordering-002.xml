@@ -30,6 +30,7 @@
           </configs>
           <projects/>
           <condition>UNSTABLE_OR_BETTER</condition>
+          <triggerFromChildProjects>false</triggerFromChildProjects>
           <triggerWithNoParameters>false</triggerWithNoParameters>
         </hudson.plugins.parameterizedtrigger.BuildTriggerConfig>
       </configs>
@@ -70,6 +71,7 @@
           </configs>
           <projects/>
           <condition>UNSTABLE_OR_BETTER</condition>
+          <triggerFromChildProjects>false</triggerFromChildProjects>
           <triggerWithNoParameters>false</triggerWithNoParameters>
         </hudson.plugins.parameterizedtrigger.BuildTriggerConfig>
       </configs>

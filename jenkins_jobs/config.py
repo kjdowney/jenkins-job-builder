@@ -41,6 +41,7 @@ recursive=False
 exclude=.*
 allow_duplicates=False
 allow_empty_variables=False
+retain_anchors=False
 
 # other named sections could be used in addition to the implicit [jenkins]
 # if you have multiple jenkins servers.
@@ -51,6 +52,11 @@ query_plugins_info=False
 
 CONFIG_REQUIRED_MESSAGE = ("A valid configuration file is required. "
                            "No configuration file passed.")
+DEPRECATED_PLUGIN_CONFIG_SECTION_MESSAGE = (
+    "Defining plugin configuration using a [{plugin}] section in your config"
+    " file is deprecated. The recommended way to define plugins now is by"
+    " using a [plugin \"{plugin}\"] section"
+)
 _NOTSET = object()
 
 
@@ -300,6 +306,13 @@ class JJBConfig(object):
             config.has_option('job_builder', 'allow_empty_variables') and
             config.getboolean('job_builder', 'allow_empty_variables'))
 
+        # retain anchors across files?
+        retain_anchors = False
+        if config and config.has_option('job_builder', 'retain_anchors'):
+            retain_anchors = config.getboolean('job_builder',
+                                               'retain_anchors')
+        self.yamlparser['retain_anchors'] = retain_anchors
+
     def validate(self):
         # Inform the user as to what is likely to happen, as they may specify
         # a real jenkins instance in test mode to get the plugin info to check
@@ -353,8 +366,6 @@ class JJBConfig(object):
             if old_value is not _NOTSET:
                 value = old_value
                 logger.warning(
-                    "Defining plugin configuration using [" + plugin + "] is "
-                    "deprecated. The recommended way to define plugins now is "
-                    "by configuring [plugin \"" + plugin + "\"]")
-
+                    DEPRECATED_PLUGIN_CONFIG_SECTION_MESSAGE.format(
+                        plugin=plugin))
         return value

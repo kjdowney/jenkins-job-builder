@@ -201,6 +201,33 @@ create a view, you must define a view in a YAML file and have a variable called 
 
 Views are processed differently than Jobs and therefore will not work within a `Project`_ or a `Job Template`_.
 
+.. _view-template:
+
+View Template
+^^^^^^^^^^^^^
+
+Allow views to also be configured via templates similar to job-templates. This
+is useful when you have multiple views defined that have similar configuration
+except for a few variables. View Templates can be passed variables to fill in
+sections automatically via a project configuration using the new 'views' key.
+
+Minimal Example::
+
+  - view-template:
+      name: '{name}-template-{seq}'
+      description: 'testing view templates feature'
+      view-type: list
+      regex: 'test-view-.*'
+
+  - project:
+      name: 'test-view'
+      views:
+          - '{name}-template-{seq}'
+      seq:
+          - a
+          - b
+          - c
+
 .. _macro:
 
 Macro
@@ -367,7 +394,7 @@ It's possible to assign an `id` to any of the blocks and then use that
 to reference it instead of the name. This has two primary functions:
 
 * A unique identifier where you wish to use the same naming format for
-  multiple templates. This allows to follow a naming scheme while
+  multiple templates. This allows you to follow a naming scheme while
   still using multiple templates to handle subtle variables in job
   requirements.
 * Provides a simpler name for a `job-template` where you have multiple
@@ -474,6 +501,16 @@ For example, having a configuration file with that option enabled:
 Will prevent JJb from failing if there are any non-initialized variables used
 and replace them with the empty string instead.
 
+.. tip::
+
+   Defaults for variables can be set by using the ``|`` character
+   ``{var|default_value}``. This is useful if we want to allow users of the
+   job-template to not have to pass a setting if there is a common default for
+   it.
+
+   Example:
+
+   .. literalinclude:: /../../tests/yamlparser/fixtures/variable_defaults.yaml
 
 Yaml Anchors & Aliases
 ^^^^^^^^^^^^^^^^^^^^^^
